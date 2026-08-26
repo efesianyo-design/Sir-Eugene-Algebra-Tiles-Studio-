@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    touch-action: none;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  .math-font {
+    font-family: 'STIX Two Text', 'Cambria Math', Georgia, serif;
+  }
+
+  .code-font {
+    font-family: 'Fira Code', monospace;
+  }
+}
+
+/* Custom scrollbars for sidebars and trays */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Zero pair glow animation */
+@keyframes zeroPairPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 20px rgba(59, 130, 246, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.9), 0 0 30px rgba(59, 130, 246, 0.9);
+  }
+}
+
+.zero-pair-glow {
+  animation: zeroPairPulse 1.4s infinite ease-in-out;
+}
+
+/* Zero-pair quick dissolve & fade animation */
+@keyframes zeroPairDissolveAnim {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    filter: brightness(1.3) blur(0px);
+  }
+  40% {
+    transform: scale(1.18) rotate(3deg);
+    opacity: 0.9;
+    filter: brightness(2) blur(1px);
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.8), 0 0 35px rgba(234, 179, 8, 0.8);
+  }
+  100% {
+    transform: scale(0.3) rotate(-6deg);
+    opacity: 0;
+    filter: brightness(3) blur(8px);
+  }
+}
+
+.tile-dissolve {
+  animation: zeroPairDissolveAnim 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  pointer-events: none !important;
+  z-index: 50 !important;
+}
+

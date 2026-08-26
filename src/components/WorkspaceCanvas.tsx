@@ -1,0 +1,900 @@
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate } from '../types';
+import { TileItem } from './TileItem';
+import { MathView } from './MathView';
+import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions } from '../utils/constants';
+import { playSound } from '../utils/audio';
+import { findZeroPairs, computeExpressionBreakdown, computeFactoringModel } from '../utils/mathEngine';
+import { Maximize2, Sparkles, Scale, Grid, Magnet, ZoomIn, ZoomOut, RotateCcw, Copy, Check, CheckCircle2, AlertCircle } from 'lucide-react';
+
+interface WorkspaceCanvasProps {
+  tiles: TileData[];
+  mode: WorkspaceMode;
+  gridConfig: GridConfig;
+  setTiles: React.Dispatch<React.SetStateAction<TileData[]>>;
+  onTilesChange: (newTiles: TileData[]) => void;
+  autoCancelZeroPairs: boolean;
+  onCancelZeroPair: (pair: ZeroPairCandidate) => void;
+  onCancelAllZeroPairs: () => void;
+}
+
+export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
+  tiles,
+  mode,
+  gridConfig,
+  setTiles,
+  onTilesChange,
+  autoCancelZeroPairs,
+  onCancelZeroPair,
+  onCancelAllZeroPairs,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(new Set());
+  const [dissolvingTileIds, setDissolvingTileIds] = useState<Set<string>>(new Set());
+  const [zeroPairBurst, setZeroPairBurst] = useState<{ id: string; x: number; y: number; label: string } | null>(null);
+  const [copiedExpr, setCopiedExpr] = useState(false);
+
+  // Canvas pan & zoom transformation
+  const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, viewX: 0, viewY: 0 });
+
+  // Dragging state
+  const isDraggingRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
+  const dragTileIdRef = useRef<string | null>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialTilePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Marquee / Box Selection state
+  const [selectionBox, setSelectionBox] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+
+  // Computed zero pairs and expression breakdown
+  const zeroPairs = findZeroPairs(tiles);
+  const zeroPairTileIds = new Set<string>();
+  zeroPairs.forEach((p) => {
+    zeroPairTileIds.add(p.tile1Id);
+    zeroPairTileIds.add(p.tile2Id);
+  });
+
+  const expressionBreakdown = computeExpressionBreakdown(tiles);
+
+  // Calculate snap position for a tile coordinate
+  const snapCoordinate = useCallback(
+    (x: number, y: number, kind: TileKind, rotation: 0 | 90, ignoreTileId?: string) => {
+      let snappedX = x;
+      let snappedY = y;
+
+      const dim = getTileDimensions(kind, rotation, gridConfig.unitSize, gridConfig.xSize, gridConfig.ySize);
+
+      // Grid snap
+      if (gridConfig.snapToGrid) {
+        const u = gridConfig.unitSize;
+        snappedX = Math.round(x / u) * u;
+        snappedY = Math.round(y / u) * u;
+      }
+
+      // Magnetic edge-snapping: when dragging a tile near another tile (within 8px), snap bounding edges together
+      const SNAP_THRESHOLD = 8;
+      let bestSnapDeltaX = Infinity;
+      let bestSnapCandidateX = snappedX;
+
+      let bestSnapDeltaY = Infinity;
+      let bestSnapCandidateY = snappedY;
+
+      tiles.forEach((other) => {
+        if (other.id === ignoreTileId) return;
+        const otherDim = getTileDimensions(other.kind, other.rotation, gridConfig.unitSize, gridConfig.xSize, gridConfig.ySize);
+
+        const otherLeft = other.x;
+        const otherRight = other.x + otherDim.width;
+        const otherTop = other.y;
+        const otherBottom = other.y + otherDim.height;
+
+        // Vertical overlap / proximity allowance for horizontal edge snapping
+        const vOverlap = (snappedY + dim.height >= otherTop - SNAP_THRESHOLD) && (snappedY <= otherBottom + SNAP_THRESHOLD);
+
+        if (vOverlap) {
+          // 1. Snap dragged tile's left edge to other tile's right edge (adjacent side-by-side)
+          const deltaLeftToRight = Math.abs(snappedX - otherRight);
+          if (deltaLeftToRight <= SNAP_THRESHOLD && deltaLeftToRight < bestSnapDeltaX) {
+            bestSnapDeltaX = deltaLeftToRight;
+            bestSnapCandidateX = otherRight;
+          }
+
+          // 2. Snap dragged tile's right edge to other tile's left edge (adjacent side-by-side)
+          const deltaRightToLeft = Math.abs((snappedX + dim.width) - otherLeft);
+          if (deltaRightToLeft <= SNAP_THRESHOLD && deltaRightToLeft < bestSnapDeltaX) {
+            bestSnapDeltaX = deltaRightToLeft;
+            bestSnapCandidateX = otherLeft - dim.width;
+          }
+
+          // 3. Align left edges cleanly
+          const deltaLeftAlign = Math.abs(snappedX - otherLeft);
+          if (deltaLeftAlign <= SNAP_THRESHOLD && deltaLeftAlign < bestSnapDeltaX) {
+            bestSnapDeltaX = deltaLeftAlign;
+            bestSnapCandidateX = otherLeft;
+          }
+
+          // 4. Align right edges cleanly
+          const deltaRightAlign = Math.abs((snappedX + dim.width) - otherRight);
+          if (deltaRightAlign <= SNAP_THRESHOLD && deltaRightAlign < bestSnapDeltaX) {
+            bestSnapDeltaX = deltaRightAlign;
+            bestSnapCandidateX = otherRight - dim.width;
+          }
+        }
+
+        // Horizontal overlap / proximity allowance for vertical edge snapping
+        const hOverlap = (snappedX + dim.width >= otherLeft - SNAP_THRESHOLD) && (snappedX <= otherRight + SNAP_THRESHOLD);
+
+        if (hOverlap) {
+          // 1. Snap dragged tile's top edge to other tile's bottom edge (adjacent stacked)
+          const deltaTopToBottom = Math.abs(snappedY - otherBottom);
+          if (deltaTopToBottom <= SNAP_THRESHOLD && deltaTopToBottom < bestSnapDeltaY) {
+            bestSnapDeltaY = deltaTopToBottom;
+            bestSnapCandidateY = otherBottom;
+          }
+
+          // 2. Snap dragged tile's bottom edge to other tile's top edge (adjacent stacked)
+          const deltaBottomToTop = Math.abs((snappedY + dim.height) - otherTop);
+          if (deltaBottomToTop <= SNAP_THRESHOLD && deltaBottomToTop < bestSnapDeltaY) {
+            bestSnapDeltaY = deltaBottomToTop;
+            bestSnapCandidateY = otherTop - dim.height;
+          }
+
+          // 3. Align top edges cleanly
+          const deltaTopAlign = Math.abs(snappedY - otherTop);
+          if (deltaTopAlign <= SNAP_THRESHOLD && deltaTopAlign < bestSnapDeltaY) {
+            bestSnapDeltaY = deltaTopAlign;
+            bestSnapCandidateY = otherTop;
+          }
+
+          // 4. Align bottom edges cleanly
+          const deltaBottomAlign = Math.abs((snappedY + dim.height) - otherBottom);
+          if (deltaBottomAlign <= SNAP_THRESHOLD && deltaBottomAlign < bestSnapDeltaY) {
+            bestSnapDeltaY = deltaBottomAlign;
+            bestSnapCandidateY = otherBottom - dim.height;
+          }
+        }
+      });
+
+      if (bestSnapDeltaX <= SNAP_THRESHOLD) {
+        snappedX = bestSnapCandidateX;
+      }
+      if (bestSnapDeltaY <= SNAP_THRESHOLD) {
+        snappedY = bestSnapCandidateY;
+      }
+
+      return { x: snappedX, y: snappedY };
+    },
+    [gridConfig, tiles]
+  );
+
+  // Screen to Canvas coordinate conversion
+  const screenToCanvas = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!containerRef.current) return { x: clientX, y: clientY };
+      const rect = containerRef.current.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left - viewTransform.x) / viewTransform.scale,
+        y: (clientY - rect.top - viewTransform.y) / viewTransform.scale,
+      };
+    },
+    [viewTransform]
+  );
+
+  // Tile Drag Start handler
+  const handleTilePointerDown = (e: React.PointerEvent, tileId: string) => {
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    activePointerIdRef.current = e.pointerId;
+    isDraggingRef.current = true;
+    dragTileIdRef.current = tileId;
+
+    const canvasPos = screenToCanvas(e.clientX, e.clientY);
+    dragStartPosRef.current = canvasPos;
+
+    // Handle selection: if clicking an unselected tile without shift/ctrl, select only this tile
+    let newSelected = new Set(selectedTileIds);
+    if (!e.shiftKey && !e.ctrlKey && !selectedTileIds.has(tileId)) {
+      newSelected = new Set([tileId]);
+      setSelectedTileIds(newSelected);
+    } else if (e.shiftKey || e.ctrlKey) {
+      if (newSelected.has(tileId)) newSelected.delete(tileId);
+      else newSelected.add(tileId);
+      setSelectedTileIds(newSelected);
+    }
+
+    // Save initial positions of all dragged tiles
+    const initialPos = new Map<string, { x: number; y: number }>();
+    tiles.forEach((t) => {
+      if (newSelected.has(t.id) || t.id === tileId) {
+        initialPos.set(t.id, { x: t.x, y: t.y });
+      }
+    });
+    initialTilePositionsRef.current = initialPos;
+    playSound('pickup');
+  };
+
+  // Canvas background pointer down (selection box or pan)
+  const handleCanvasPointerDown = (e: React.PointerEvent) => {
+    // If middle click or space key pressed -> pan
+    if (e.button === 1 || e.altKey) {
+      setIsPanning(true);
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        viewX: viewTransform.x,
+        viewY: viewTransform.y,
+      };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // Otherwise clear selection and start box marquee
+    if (!e.shiftKey) {
+      setSelectedTileIds(new Set());
+    }
+
+    const canvasPos = screenToCanvas(e.clientX, e.clientY);
+    setSelectionBox({
+      startX: canvasPos.x,
+      startY: canvasPos.y,
+      currentX: canvasPos.x,
+      currentY: canvasPos.y,
+    });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  // Pointer Move
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setViewTransform((prev) => ({
+        ...prev,
+        x: panStartRef.current.viewX + dx,
+        y: panStartRef.current.viewY + dy,
+      }));
+      return;
+    }
+
+    // Marquee selection box update
+    if (selectionBox) {
+      const canvasPos = screenToCanvas(e.clientX, e.clientY);
+      setSelectionBox((prev) => (prev ? { ...prev, currentX: canvasPos.x, currentY: canvasPos.y } : null));
+
+      // Check which tiles intersect with selection box
+      const minX = Math.min(selectionBox.startX, canvasPos.x);
+      const maxX = Math.max(selectionBox.startX, canvasPos.x);
+      const minY = Math.min(selectionBox.startY, canvasPos.y);
+      const maxY = Math.max(selectionBox.startY, canvasPos.y);
+
+      const newlySelected = new Set<string>(e.shiftKey ? selectedTileIds : []);
+      tiles.forEach((tile) => {
+        const dim = getTileDimensions(tile.kind, tile.rotation);
+        const tileRight = tile.x + dim.width;
+        const tileBottom = tile.y + dim.height;
+
+        if (tile.x < maxX && tileRight > minX && tile.y < maxY && tileBottom > minY) {
+          newlySelected.add(tile.id);
+        }
+      });
+      setSelectedTileIds(newlySelected);
+      return;
+    }
+
+    // Dragging tile(s)
+    if (isDraggingRef.current && dragTileIdRef.current) {
+      const canvasPos = screenToCanvas(e.clientX, e.clientY);
+      const dx = canvasPos.x - dragStartPosRef.current.x;
+      const dy = canvasPos.y - dragStartPosRef.current.y;
+
+      const mainTileInit = initialTilePositionsRef.current.get(dragTileIdRef.current);
+      if (!mainTileInit) return;
+
+      const targetTile = tiles.find((t) => t.id === dragTileIdRef.current);
+      if (!targetTile) return;
+
+      // Calculate new raw position of lead tile
+      const rawX = mainTileInit.x + dx;
+      const rawY = mainTileInit.y + dy;
+
+      // Determine snap delta
+      const snapped = snapCoordinate(rawX, rawY, targetTile.kind, targetTile.rotation, targetTile.id);
+      const effectiveDx = snapped.x - mainTileInit.x;
+      const effectiveDy = snapped.y - mainTileInit.y;
+
+      // Update positions of all dragged tiles
+      setTiles((prev) =>
+        prev.map((t) => {
+          const init = initialTilePositionsRef.current.get(t.id);
+          if (init) {
+            let zone: 'left' | 'right' | 'top_factor' | 'left_factor' | 'product_area' | 'main' = 'main';
+
+            // Assign zones depending on workspace mode and coordinates
+            if (mode === 'equation') {
+              const canvasMidX = (containerRef.current?.clientWidth || 800) / 2;
+              zone = (init.x + effectiveDx) < canvasMidX ? 'left' : 'right';
+            } else if (mode === 'factor') {
+              const posX = init.x + effectiveDx;
+              const posY = init.y + effectiveDy;
+              if (posY < 160 && posX >= 160) zone = 'top_factor';
+              else if (posX < 160 && posY >= 160) zone = 'left_factor';
+              else if (posX >= 160 && posY >= 160) zone = 'product_area';
+            }
+
+            return {
+              ...t,
+              x: Math.max(0, init.x + effectiveDx),
+              y: Math.max(0, init.y + effectiveDy),
+              zone,
+            };
+          }
+          return t;
+        })
+      );
+    }
+  };
+
+  // Pointer Up
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+
+    if (selectionBox) {
+      setSelectionBox(null);
+    }
+
+    if (isDraggingRef.current) {
+      const droppedTileId = dragTileIdRef.current;
+      isDraggingRef.current = false;
+      dragTileIdRef.current = null;
+      initialTilePositionsRef.current.clear();
+      playSound('drop');
+      onTilesChange(tiles);
+
+      // 1. Core Zero-Pair Cancellation: When dropped directly on an opposite tile with >50% overlap
+      if (droppedTileId) {
+        const droppedTile = tiles.find((t) => t.id === droppedTileId);
+        if (droppedTile) {
+          const dim1 = getTileDimensions(
+            droppedTile.kind,
+            droppedTile.rotation,
+            gridConfig.unitSize,
+            gridConfig.xSize,
+            gridConfig.ySize
+          );
+          const x1 = droppedTile.x;
+          const y1 = droppedTile.y;
+          const w1 = dim1.width;
+          const h1 = dim1.height;
+          const area1 = w1 * h1;
+
+          let bestPairTile: TileData | null = null;
+          let maxOverlapRatio = 0;
+
+          tiles.forEach((other) => {
+            if (other.id === droppedTile.id) return;
+            if (other.kind !== droppedTile.kind) return;
+            if (other.sign !== -droppedTile.sign) return; // Opposite signs (e.g. +1 dropped on -1, +x on -x, +x² on -x²)
+
+            const dim2 = getTileDimensions(
+              other.kind,
+              other.rotation,
+              gridConfig.unitSize,
+              gridConfig.xSize,
+              gridConfig.ySize
+            );
+            const x2 = other.x;
+            const y2 = other.y;
+            const w2 = dim2.width;
+            const h2 = dim2.height;
+
+            // Calculate intersection bounding box
+            const interLeft = Math.max(x1, x2);
+            const interRight = Math.min(x1 + w1, x2 + w2);
+            const interTop = Math.max(y1, y2);
+            const interBottom = Math.min(y1 + h1, y2 + h2);
+
+            const interW = Math.max(0, interRight - interLeft);
+            const interH = Math.max(0, interBottom - interTop);
+            const interArea = interW * interH;
+            const area2 = w2 * h2;
+            const minArea = Math.min(area1, area2);
+
+            const overlapRatio = minArea > 0 ? interArea / minArea : 0;
+
+            if (overlapRatio > 0.5 && overlapRatio > maxOverlapRatio) {
+              maxOverlapRatio = overlapRatio;
+              bestPairTile = other;
+            }
+          });
+
+          if (bestPairTile) {
+            const partner: TileData = bestPairTile;
+            const pairIds = [droppedTile.id, partner.id];
+
+            // Trigger quick dissolve / fade animation on both tiles
+            setDissolvingTileIds((prev) => new Set([...prev, ...pairIds]));
+            playSound('zeropair');
+
+            const kindName =
+              droppedTile.kind === 'unit'
+                ? '1'
+                : droppedTile.kind === 'x2'
+                ? 'x²'
+                : droppedTile.kind === 'y2'
+                ? 'y²'
+                : droppedTile.kind;
+            const label = `${droppedTile.sign > 0 ? '+' : '-'}${kindName} + ${
+              partner.sign > 0 ? '+' : '-'
+            }${kindName} = 0`;
+
+            setZeroPairBurst({
+              id: `burst-${Date.now()}`,
+              x: (x1 + partner.x) / 2 + w1 / 2,
+              y: (y1 + partner.y) / 2 + h1 / 2,
+              label,
+            });
+
+            setTimeout(() => {
+              setTiles((prev) => {
+                const updated = prev.filter((t) => t.id !== droppedTile.id && t.id !== partner.id);
+                onTilesChange(updated);
+                return updated;
+              });
+              setDissolvingTileIds((prev) => {
+                const next = new Set(prev);
+                next.delete(droppedTile.id);
+                next.delete(partner.id);
+                return next;
+              });
+              setZeroPairBurst(null);
+            }, 350);
+
+            return;
+          }
+        }
+      }
+
+      // Auto cancel zero pairs if enabled in settings
+      if (autoCancelZeroPairs) {
+        setTimeout(() => {
+          const pairs = findZeroPairs(tiles);
+          if (pairs.length > 0) {
+            onCancelAllZeroPairs();
+          }
+        }, 150);
+      }
+    }
+  };
+
+  // Tile single actions
+  const handleFlipSign = (tileId: string) => {
+    playSound('flip');
+    const updated = tiles.map((t) => (t.id === tileId ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t));
+    setTiles(updated);
+    onTilesChange(updated);
+  };
+
+  const handleRotate = (tileId: string) => {
+    playSound('snap');
+    const updated = tiles.map((t) => {
+      if (t.id === tileId) {
+        const newRot = t.rotation === 0 ? 90 : 0;
+        return { ...t, rotation: newRot as 0 | 90 };
+      }
+      return t;
+    });
+    setTiles(updated);
+    onTilesChange(updated);
+  };
+
+  const handleDelete = (tileId: string) => {
+    playSound('clear');
+    const updated = tiles.filter((t) => t.id !== tileId);
+    setTiles(updated);
+    setSelectedTileIds((prev) => {
+      const next = new Set(prev);
+      next.delete(tileId);
+      return next;
+    });
+    onTilesChange(updated);
+  };
+
+  const handleDuplicate = (tileId: string) => {
+    const tile = tiles.find((t) => t.id === tileId);
+    if (!tile) return;
+    playSound('pickup');
+    const newTile: TileData = {
+      ...tile,
+      id: `tile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      x: tile.x + 30,
+      y: tile.y + 30,
+    };
+    const updated = [...tiles, newTile];
+    setTiles(updated);
+    setSelectedTileIds(new Set([newTile.id]));
+    onTilesChange(updated);
+  };
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedTileIds.size > 0) {
+          e.preventDefault();
+          playSound('clear');
+          const updated = tiles.filter((t) => !selectedTileIds.has(t.id));
+          setTiles(updated);
+          setSelectedTileIds(new Set());
+          onTilesChange(updated);
+        }
+      } else if (e.key.toLowerCase() === 'f') {
+        if (selectedTileIds.size > 0) {
+          e.preventDefault();
+          playSound('flip');
+          const updated = tiles.map((t) =>
+            selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
+          );
+          setTiles(updated);
+          onTilesChange(updated);
+        }
+      } else if (e.key.toLowerCase() === 'r') {
+        if (selectedTileIds.size > 0) {
+          e.preventDefault();
+          playSound('snap');
+          const updated = tiles.map((t) =>
+            selectedTileIds.has(t.id) && (t.kind === 'x' || t.kind === 'y' || t.kind === 'xy')
+              ? { ...t, rotation: (t.rotation === 0 ? 90 : 0) as 0 | 90 }
+              : t
+          );
+          setTiles(updated);
+          onTilesChange(updated);
+        }
+      } else if (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setSelectedTileIds(new Set(tiles.map((t) => t.id)));
+      } else if (e.key === 'Escape') {
+        setSelectedTileIds(new Set());
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+
+  return (
+    <div
+      ref={containerRef}
+      id="workspace-canvas-viewport"
+      className="relative flex-1 w-full h-full overflow-hidden bg-slate-950 select-none touch-none cursor-crosshair"
+      onPointerDown={handleCanvasPointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      {/* Background Grid Pattern */}
+      {gridConfig.showGrid && (
+        <div
+          className="absolute inset-0 pointer-events-none opacity-20"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, rgba(148, 163, 184, 0.4) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(148, 163, 184, 0.4) 1px, transparent 1px)
+            `,
+            backgroundSize: `${gridConfig.unitSize}px ${gridConfig.unitSize}px`,
+            backgroundPosition: `${viewTransform.x}px ${viewTransform.y}px`,
+          }}
+        />
+      )}
+
+      {/* Mode Special Overlays */}
+
+      {/* 1. EQUATION BALANCE MAT OVERLAY */}
+      {mode === 'equation' && (
+        <div className="absolute inset-0 pointer-events-none flex flex-col">
+          {/* Top Bar Header */}
+          <div className="h-10 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between px-6 z-0">
+            <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs uppercase tracking-wider">
+              <Scale className="w-4 h-4" />
+              <span>Left Side Expression</span>
+            </div>
+            <div className="flex items-center gap-2 bg-cyan-950/80 text-cyan-300 font-mono font-bold text-sm px-3 py-0.5 rounded-full border border-cyan-700/50">
+              =
+            </div>
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+              <Scale className="w-4 h-4" />
+              <span>Right Side Expression</span>
+            </div>
+          </div>
+
+          {/* Center Divider & Balance Fulcrum */}
+          <div className="relative flex-1 flex">
+            <div className="flex-1 bg-cyan-950/5 border-r-2 border-dashed border-slate-700/60" />
+            <div className="absolute left-1/2 top-0 bottom-0 -translate-x-1/2 flex flex-col items-center justify-center pointer-events-none">
+              <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-slate-600 flex items-center justify-center text-slate-300 font-bold text-xl shadow-2xl">
+                =
+              </div>
+            </div>
+            <div className="flex-1 bg-amber-950/5" />
+          </div>
+        </div>
+      )}
+
+      {/* 2. FACTOR TRACK AREA MODEL OVERLAY */}
+      {mode === 'factor' && (
+        <div className="absolute inset-0 pointer-events-none z-0">
+          {/* Top factor header row */}
+          <div className="absolute top-0 left-40 right-0 h-40 bg-emerald-950/15 border-b-2 border-dashed border-emerald-600/40 p-3">
+            <div className="text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <span>Top Dimension / Factor 1 (Width)</span>
+            </div>
+            <div className="text-[11px] text-emerald-500/80 font-mono">Place x bars and unit tiles horizontally here</div>
+          </div>
+
+          {/* Left factor header column */}
+          <div className="absolute top-40 left-0 w-40 bottom-0 bg-blue-950/15 border-r-2 border-dashed border-blue-600/40 p-3">
+            <div className="text-blue-400 font-bold text-xs uppercase tracking-wider">
+              Left Factor 2
+            </div>
+            <div className="text-[11px] text-blue-400/80 font-mono mt-1">Height dimension</div>
+          </div>
+
+          {/* Corner Intersection Guide */}
+          <div className="absolute top-0 left-0 w-40 h-40 bg-slate-900/90 border-r-2 border-b-2 border-slate-700 flex flex-col items-center justify-center text-center p-2">
+            <span className="text-xs font-bold text-slate-300">Factor Track Corner</span>
+            <span className="text-[10px] text-slate-500 mt-1">Product Area (Right & Below)</span>
+          </div>
+
+          {/* Product Region Area Label */}
+          <div className="absolute top-44 left-44 text-slate-600 font-bold text-xs uppercase tracking-widest pointer-events-none">
+            Solid Product Area [x², x, y, 1]
+          </div>
+        </div>
+      )}
+
+      {/* Transformed Canvas Container for Tiles */}
+      <div
+        id="canvas-transformed-plane"
+        style={{
+          transform: `translate(${viewTransform.x}px, ${viewTransform.y}px) scale(${viewTransform.scale})`,
+          transformOrigin: '0 0',
+          width: '100%',
+          height: '100%',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+        }}
+      >
+        {/* Render Tiles */}
+        {tiles.map((tile) => (
+          <TileItem
+            key={tile.id}
+            tile={tile}
+            isSelected={selectedTileIds.has(tile.id)}
+            isZeroPaired={zeroPairTileIds.has(tile.id)}
+            isDissolving={dissolvingTileIds.has(tile.id)}
+            onPointerDown={handleTilePointerDown}
+            onFlipSign={handleFlipSign}
+            onRotate={handleRotate}
+            onDelete={handleDelete}
+            onDuplicate={handleDuplicate}
+          />
+        ))}
+
+        {/* Zero Pair Dissolve / Poof Notification Particles */}
+        {zeroPairBurst && (
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none flex flex-col items-center animate-bounce"
+            style={{ left: `${zeroPairBurst.x}px`, top: `${zeroPairBurst.y}px` }}
+          >
+            <div className="bg-amber-400 text-slate-950 font-black text-xs px-2.5 py-1 rounded-full shadow-lg border border-amber-300 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-900" />
+              <span>Zero-Pair Cancelled!</span>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-amber-200 mt-0.5 drop-shadow">
+              {zeroPairBurst.label}
+            </span>
+          </div>
+        )}
+
+        {/* Marquee Selection Box */}
+        {selectionBox && (
+          <div
+            className="absolute border border-cyan-400 bg-cyan-500/15 pointer-events-none rounded-sm z-40"
+            style={{
+              left: `${Math.min(selectionBox.startX, selectionBox.currentX)}px`,
+              top: `${Math.min(selectionBox.startY, selectionBox.currentY)}px`,
+              width: `${Math.abs(selectionBox.currentX - selectionBox.startX)}px`,
+              height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
+            }}
+          />
+        )}
+      </div>
+
+      {/* Sticky Live Equation / Expression Display Card (Top Center) */}
+      <div
+        id="sticky-live-expression-card"
+        className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-2xl shadow-md hover:shadow-lg transition-all max-w-[94vw] sm:max-w-md pointer-events-auto"
+      >
+        {/* Term Count Pill Badges */}
+        <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 pr-3">
+          {/* Quadratic x² term pill */}
+          <span
+            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+              expressionBreakdown.x2 !== 0
+                ? expressionBreakdown.x2 > 0
+                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                  : 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-slate-100 text-slate-400'
+            }`}
+            title="Quadratic x² count"
+          >
+            {expressionBreakdown.x2 !== 0
+              ? `${expressionBreakdown.x2 > 0 ? '+' : ''}${expressionBreakdown.x2}x²`
+              : '0x²'}
+          </span>
+
+          {/* Variable x term pill */}
+          <span
+            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+              expressionBreakdown.x !== 0
+                ? expressionBreakdown.x > 0
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-slate-100 text-slate-400'
+            }`}
+            title="Variable x count"
+          >
+            {expressionBreakdown.x !== 0
+              ? `${expressionBreakdown.x > 0 ? '+' : ''}${expressionBreakdown.x}x`
+              : '0x'}
+          </span>
+
+          {/* Constant 1 unit pill */}
+          <span
+            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+              expressionBreakdown.unit !== 0
+                ? expressionBreakdown.unit > 0
+                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                  : 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-slate-100 text-slate-400'
+            }`}
+            title="Unit constant count"
+          >
+            {expressionBreakdown.unit !== 0
+              ? `${expressionBreakdown.unit > 0 ? '+' : ''}${expressionBreakdown.unit}`
+              : '0'}
+          </span>
+        </div>
+
+        {/* Simplified Live Expression Rendering */}
+        <div className="flex flex-col items-center min-w-[120px]">
+          <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
+            Live Expression
+          </span>
+          <div className="text-base sm:text-lg font-bold text-indigo-900 tracking-wide">
+            <MathView latex={expressionBreakdown.simplifiedLatex} />
+          </div>
+        </div>
+
+        {/* Copy Expression Button */}
+        <button
+          id="sticky-copy-expr-btn"
+          type="button"
+          title="Copy Expression LaTeX"
+          className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
+          onClick={() => {
+            playSound('click');
+            navigator.clipboard.writeText(expressionBreakdown.simplifiedLatex);
+            setCopiedExpr(true);
+            setTimeout(() => setCopiedExpr(false), 2000);
+          }}
+        >
+          {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* Zero Pair Floating Cancel Notification / Pill */}
+      {zeroPairs.length > 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-amber-950/90 border border-amber-500/60 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 z-50 animate-bounce">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span className="text-xs font-semibold text-amber-200">
+            {zeroPairs.length} Zero Pair{zeroPairs.length > 1 ? 's' : ''} detected!
+          </span>
+          <button
+            id="cancel-zero-pairs-toast-btn"
+            type="button"
+            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold rounded-full transition-all shadow-md"
+            onClick={() => {
+              onCancelAllZeroPairs();
+            }}
+          >
+            Cancel All (Vaporize)
+          </button>
+        </div>
+      )}
+
+      {/* Floating Canvas View Controls (Zoom, Reset, Snap) */}
+      <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800 p-1.5 rounded-xl shadow-lg z-30">
+        <button
+          id="canvas-zoom-in-btn"
+          type="button"
+          title="Zoom In"
+          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.0, v.scale + 0.15) }))}
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          id="canvas-zoom-out-btn"
+          type="button"
+          title="Zoom Out"
+          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.max(0.5, v.scale - 0.15) }))}
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <button
+          id="canvas-reset-view-btn"
+          type="button"
+          title="Reset View Position"
+          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          onClick={() => setViewTransform({ x: 0, y: 0, scale: 1 })}
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Selection Stats Bar */}
+      {selectedTileIds.size > 0 && (
+        <div className="absolute top-4 left-4 bg-slate-900/90 border border-slate-700 px-3 py-1.5 rounded-lg text-xs text-slate-200 flex items-center gap-3 z-30 shadow-lg">
+          <span className="font-semibold text-cyan-400">
+            {selectedTileIds.size} tile{selectedTileIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              id="batch-flip-btn"
+              type="button"
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-[11px]"
+              onClick={() => {
+                playSound('flip');
+                const updated = tiles.map((t) =>
+                  selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
+                );
+                setTiles(updated);
+                onTilesChange(updated);
+              }}
+            >
+              Flip Signs (F)
+            </button>
+            <button
+              id="batch-del-btn"
+              type="button"
+              className="px-2 py-0.5 bg-red-950/80 hover:bg-red-900 text-red-300 rounded text-[11px]"
+              onClick={() => {
+                playSound('clear');
+                const updated = tiles.filter((t) => !selectedTileIds.has(t.id));
+                setTiles(updated);
+                setSelectedTileIds(new Set());
+                onTilesChange(updated);
+              }}
+            >
+              Delete (Del)
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,22 @@
+{
+  "short_name": "AlgebraTiles",
+  "name": "Algebra Tiles Studio",
+  "description": "Interactive virtual algebra tiles manipulative workspace with touch & gesture handling, factor tracks, equation balance mats, and offline PWA capability.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "any"
+}
