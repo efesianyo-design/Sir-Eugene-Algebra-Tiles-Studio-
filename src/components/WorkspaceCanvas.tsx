@@ -26,6 +26,9 @@ import {
   Layers,
 } from 'lucide-react';
 
+import confetti from 'canvas-confetti';
+import { FactoringAnalysis } from '../utils/mathParser';
+
 interface WorkspaceCanvasProps {
   tiles: TileData[];
   mode: WorkspaceMode;
@@ -35,6 +38,8 @@ interface WorkspaceCanvasProps {
   autoCancelZeroPairs: boolean;
   onCancelZeroPair: (pair: ZeroPairCandidate) => void;
   onCancelAllZeroPairs: () => void;
+  customTarget?: { rawString: string; factoringAnalysis?: FactoringAnalysis | null } | null;
+  onAutoArrangeFactoring?: () => void;
 }
 
 export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
@@ -46,6 +51,8 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   autoCancelZeroPairs,
   onCancelZeroPair,
   onCancelAllZeroPairs,
+  customTarget,
+  onAutoArrangeFactoring,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(new Set());
@@ -811,183 +818,6 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
             }}
           />
-        )}
-      </div>
-
-      {/* Sticky Live Equation / Expression Display Card (Top Center) */}
-      <div
-        id="sticky-live-expression-card"
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-2xl shadow-md hover:shadow-lg transition-all max-w-[96vw] sm:max-w-xl pointer-events-auto"
-      >
-        {mode === 'equation' ? (
-          // --- EQUATION MAT MODE LIVE EQUATION READOUT ---
-          <div className="flex items-center gap-2 sm:gap-3 flex-1 justify-between">
-            {/* Left Side Term */}
-            <div className="flex flex-col items-center min-w-[70px] sm:min-w-[100px] text-cyan-800">
-              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                Left Side ({leftSideTiles.length})
-              </span>
-              <div className="text-sm sm:text-base font-bold text-cyan-900">
-                <MathView latex={leftBreakdown.simplifiedLatex || '0'} />
-              </div>
-            </div>
-
-            {/* Equals Sign & Balance Pill */}
-            <div className="flex flex-col items-center px-1">
-              <div className="text-base sm:text-lg font-black text-slate-700 font-mono">=</div>
-              {isEquationBalanced ? (
-                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                  <CheckCircle2 className="w-2.5 h-2.5" /> Balanced
-                </span>
-              ) : (
-                <span className="text-[9px] text-slate-400 font-medium">Equation</span>
-              )}
-            </div>
-
-            {/* Right Side Term */}
-            <div className="flex flex-col items-center min-w-[70px] sm:min-w-[100px] text-amber-800">
-              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                Right Side ({rightSideTiles.length})
-              </span>
-              <div className="text-sm sm:text-base font-bold text-amber-900">
-                <MathView latex={rightBreakdown.simplifiedLatex || '0'} />
-              </div>
-            </div>
-
-            {/* Copy Equation Button */}
-            <button
-              id="sticky-copy-equation-btn"
-              type="button"
-              title="Copy Equation LaTeX"
-              className="ml-1 p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
-              onClick={() => {
-                playSound('click');
-                const eqText = `${leftBreakdown.simplifiedLatex || '0'} = ${rightBreakdown.simplifiedLatex || '0'}`;
-                navigator.clipboard.writeText(eqText);
-                setCopiedExpr(true);
-                setTimeout(() => setCopiedExpr(false), 2000);
-              }}
-            >
-              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-        ) : mode === 'factor' ? (
-          // --- FACTORING / AREA MULTIPLICATION GRID LIVE READOUT ---
-          <div className="flex items-center gap-2 sm:gap-3 flex-1 justify-between">
-            <div className="flex flex-col items-center">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                <span>Factoring Model</span>
-                {factoringResult.isValidFactorization ? (
-                  <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Valid Product
-                  </span>
-                ) : (
-                  <span className="text-slate-400 font-normal">
-                    (Left × Top = Product)
-                  </span>
-                )}
-              </div>
-              <div className="text-sm sm:text-base font-bold text-indigo-900 tracking-wide mt-0.5">
-                <MathView latex={factoringResult.fullEquationLatex} />
-              </div>
-            </div>
-
-            {/* Copy Factoring Equation Button */}
-            <button
-              id="sticky-copy-factor-btn"
-              type="button"
-              title="Copy Factoring Equation"
-              className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
-              onClick={() => {
-                playSound('click');
-                navigator.clipboard.writeText(factoringResult.fullEquationLatex);
-                setCopiedExpr(true);
-                setTimeout(() => setCopiedExpr(false), 2000);
-              }}
-            >
-              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-        ) : (
-          // --- FREE EXPLORE MODE LIVE SIMPLIFIED EXPRESSION READOUT ---
-          <>
-            {/* Term Count Pill Badges */}
-            <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 pr-3">
-              {/* Quadratic x² term pill */}
-              <span
-                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-                  expressionBreakdown.x2 !== 0
-                    ? expressionBreakdown.x2 > 0
-                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                      : 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-slate-100 text-slate-400'
-                }`}
-                title="Quadratic x² count"
-              >
-                {expressionBreakdown.x2 !== 0
-                  ? `${expressionBreakdown.x2 > 0 ? '+' : ''}${expressionBreakdown.x2}x²`
-                  : '0x²'}
-              </span>
-
-              {/* Variable x term pill */}
-              <span
-                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-                  expressionBreakdown.x !== 0
-                    ? expressionBreakdown.x > 0
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      : 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-slate-100 text-slate-400'
-                }`}
-                title="Variable x count"
-              >
-                {expressionBreakdown.x !== 0
-                  ? `${expressionBreakdown.x > 0 ? '+' : ''}${expressionBreakdown.x}x`
-                  : '0x'}
-              </span>
-
-              {/* Constant 1 unit pill */}
-              <span
-                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-                  expressionBreakdown.unit !== 0
-                    ? expressionBreakdown.unit > 0
-                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                      : 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-slate-100 text-slate-400'
-                }`}
-                title="Unit constant count"
-              >
-                {expressionBreakdown.unit !== 0
-                  ? `${expressionBreakdown.unit > 0 ? '+' : ''}${expressionBreakdown.unit}`
-                  : '0'}
-              </span>
-            </div>
-
-            {/* Simplified Live Expression Rendering */}
-            <div className="flex flex-col items-center min-w-[120px]">
-              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                Live Expression
-              </span>
-              <div className="text-base sm:text-lg font-bold text-indigo-900 tracking-wide">
-                <MathView latex={expressionBreakdown.simplifiedLatex} />
-              </div>
-            </div>
-
-            {/* Copy Expression Button */}
-            <button
-              id="sticky-copy-expr-btn"
-              type="button"
-              title="Copy Expression LaTeX"
-              className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
-              onClick={() => {
-                playSound('click');
-                navigator.clipboard.writeText(expressionBreakdown.simplifiedLatex);
-                setCopiedExpr(true);
-                setTimeout(() => setCopiedExpr(false), 2000);
-              }}
-            >
-              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </>
         )}
       </div>
 
