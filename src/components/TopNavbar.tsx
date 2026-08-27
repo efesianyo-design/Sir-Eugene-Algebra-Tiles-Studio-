@@ -94,19 +94,19 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   return (
     <header
       id="top-navbar"
-      className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-4 z-40 flex-shrink-0 select-none shadow-sm gap-2"
+      className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-2 sm:px-3 md:px-4 z-40 flex-shrink-0 select-none shadow-sm gap-2 sm:gap-3 w-full overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap"
     >
       {/* Brand & Single Mode Selector */}
       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-600 flex items-center justify-center shadow-md flex-shrink-0 ring-1 ring-white/10">
             <Layers className="w-4 h-4 text-white" />
           </div>
-          <div className="flex flex-col justify-center">
-            <h1 className="font-black text-xs sm:text-sm tracking-tight text-slate-100 leading-tight">
+          <div className="flex flex-col justify-center flex-shrink-0">
+            <h1 className="font-black text-xs sm:text-sm tracking-tight text-slate-100 leading-tight whitespace-nowrap">
               Algebra Tiles <span className="text-cyan-400 font-extrabold">Studio</span>
             </h1>
-            <span className="text-[10px] text-slate-400 font-medium tracking-tight leading-none">
+            <span className="text-[10px] text-slate-400 font-medium tracking-tight leading-none whitespace-nowrap">
               Sir Eugene Technologies
             </span>
           </div>
@@ -116,13 +116,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
         <nav
           id="primary-mode-nav-tabs"
           aria-label="Workspace Modes"
-          className="flex items-center bg-slate-950 p-0.5 sm:p-1 rounded-xl border border-slate-800 gap-0.5 sm:gap-1 shadow-inner"
+          className="flex items-center bg-slate-950 p-0.5 sm:p-1 rounded-xl border border-slate-800 gap-0.5 sm:gap-1 shadow-inner flex-shrink-0"
         >
           {/* Equation Mat */}
           <button
             id="nav-mode-equation-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
               mode === 'equation'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
@@ -133,7 +133,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             }}
             title="Solve linear equations step-by-step with balanced left & right mats"
           >
-            <Scale className="w-3.5 h-3.5 text-cyan-400" />
+            <Scale className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
             <span className="hidden sm:inline">Equation Mat</span>
             <span className="sm:hidden">Equation</span>
           </button>
@@ -142,7 +142,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <button
             id="nav-mode-factor-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
               mode === 'factor'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
@@ -153,7 +153,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             }}
             title="Factoring & Area multiplication grid"
           >
-            <Grid className="w-3.5 h-3.5 text-emerald-400" />
+            <Grid className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
             <span className="hidden sm:inline">Factoring Grid</span>
             <span className="sm:hidden">Factoring</span>
           </button>
@@ -162,7 +162,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <button
             id="nav-mode-freeform-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
               mode === 'freeform'
                 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
@@ -173,7 +173,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             }}
             title="Freeform expressions & simplifying like terms"
           >
-            <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+            <Edit3 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
             <span className="hidden sm:inline">Free Explore</span>
             <span className="sm:hidden">Explore</span>
           </button>
@@ -184,7 +184,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
       <div
         id="topbar-live-math-badge"
         onClick={handleCopyMath}
-        className="hidden md:flex items-center gap-2 bg-slate-950/90 border border-slate-800 hover:border-cyan-500/40 px-3 py-1 rounded-xl shadow-inner cursor-pointer transition-all max-w-[200px] lg:max-w-xs xl:max-w-md truncate"
+        className="hidden md:flex items-center gap-2 bg-slate-950/90 border border-slate-800 hover:border-cyan-500/40 px-3 py-1 rounded-xl shadow-inner cursor-pointer transition-all max-w-[200px] lg:max-w-xs xl:max-w-md truncate flex-shrink-0"
         title="Click to copy LaTeX expression"
       >
         <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 hidden md:inline">

@@ -74,7 +74,7 @@ export const SocraticCoachBar: React.FC<SocraticCoachBarProps> = ({
   return (
     <div
       id="socratic-coach-ribbon"
-      className="bg-slate-900/95 border-t border-slate-800 text-slate-200 select-none z-30 flex flex-col flex-shrink-0 transition-all shadow-md"
+      className="bg-slate-900/95 border-t border-slate-800 text-slate-200 select-none z-40 flex flex-col flex-shrink-0 transition-all shadow-md w-full"
     >
       {/* Slim Single-Line Docked Ribbon */}
       <div

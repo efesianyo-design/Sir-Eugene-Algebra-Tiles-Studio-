@@ -69,12 +69,12 @@ export const EquationStepToolbar: React.FC<EquationStepToolbarProps> = ({
         </div>
 
         {/* Action Buttons: Add -1, Add +1, Add -x, Divide */}
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap">
           {/* Add -1 */}
           <button
             id="btn-quick-add-neg1"
             type="button"
-            className="min-h-[32px] px-2 py-0.5 bg-red-950/60 hover:bg-red-900/60 border border-red-500/40 active:scale-95 text-red-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+            className="min-h-[32px] px-2 py-0.5 bg-red-950/60 hover:bg-red-900/60 border border-red-500/40 active:scale-95 text-red-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
             onClick={() => {
               playSound('pickup');
               onAddBothSides('unit', -1);
@@ -89,7 +89,7 @@ export const EquationStepToolbar: React.FC<EquationStepToolbarProps> = ({
           <button
             id="btn-quick-add-pos1"
             type="button"
-            className="min-h-[32px] px-2 py-0.5 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 active:scale-95 text-amber-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+            className="min-h-[32px] px-2 py-0.5 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 active:scale-95 text-amber-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
             onClick={() => {
               playSound('pickup');
               onAddBothSides('unit', 1);
@@ -104,7 +104,7 @@ export const EquationStepToolbar: React.FC<EquationStepToolbarProps> = ({
           <button
             id="btn-quick-add-negx"
             type="button"
-            className="min-h-[32px] px-2 py-0.5 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-500/40 active:scale-95 text-rose-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+            className="min-h-[32px] px-2 py-0.5 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-500/40 active:scale-95 text-rose-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
             onClick={() => {
               playSound('pickup');
               onAddBothSides('x', -1);
@@ -120,7 +120,7 @@ export const EquationStepToolbar: React.FC<EquationStepToolbarProps> = ({
             id="btn-quick-divide"
             type="button"
             disabled={!canDivide}
-            className={`min-h-[32px] px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+            className={`min-h-[32px] px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
               canDivide
                 ? 'bg-cyan-600 hover:bg-cyan-500 text-white active:scale-95 shadow-sm'
                 : 'bg-slate-800/60 border border-slate-700/50 text-slate-500 cursor-not-allowed'
@@ -136,7 +136,7 @@ export const EquationStepToolbar: React.FC<EquationStepToolbarProps> = ({
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded"
+            className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded flex-shrink-0"
             title={isExpanded ? 'Hide Step Trail' : 'Show Step Trail'}
           >
             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}

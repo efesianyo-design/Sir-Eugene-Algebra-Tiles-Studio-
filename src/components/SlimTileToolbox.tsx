@@ -22,15 +22,15 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
   return (
     <div
       id="slim-tile-toolbox-strip"
-      className="h-12 bg-slate-900 border-t border-slate-800 px-2 sm:px-4 flex items-center justify-between gap-2 select-none z-30 flex-shrink-0 shadow-lg"
+      className="min-h-[50px] bg-slate-900 border-t border-slate-800 px-2 sm:px-4 pt-1 pb-[max(12px,env(safe-area-inset-bottom))] flex items-center justify-between gap-2 select-none z-40 flex-shrink-0 shadow-lg w-full overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap"
     >
       {/* Primary Tile Spawners Strip: [+x²] [+x] [+1] [-x²] [-x] [-1] */}
-      <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-1 scrollbar-none">
+      <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5 no-scrollbar flex-shrink-0">
         {/* +x² */}
         <button
           id="tool-spawn-pos-x2"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-500/50 active:scale-95 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-500/50 active:scale-95 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('x2', 1);
@@ -45,7 +45,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
         <button
           id="tool-spawn-pos-x"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-500/50 active:scale-95 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-500/50 active:scale-95 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('x', 1, 0);
@@ -60,7 +60,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
         <button
           id="tool-spawn-pos-1"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900/80 border border-amber-500/50 active:scale-95 text-amber-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900/80 border border-amber-500/50 active:scale-95 text-amber-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('unit', 1);
@@ -77,7 +77,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
         <button
           id="tool-spawn-neg-x2"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('x2', -1);
@@ -92,7 +92,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
         <button
           id="tool-spawn-neg-x"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('x', -1, 0);
@@ -107,7 +107,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
         <button
           id="tool-spawn-neg-1"
           type="button"
-          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
+          className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-900/80 border border-red-500/50 active:scale-95 text-red-300 font-mono font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"
           onClick={() => {
             playSound('pickup');
             onSpawnTile('unit', -1);
@@ -126,7 +126,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
           <button
             id="tool-cancel-zero-pairs-btn"
             type="button"
-            className={`min-h-[38px] px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+            className={`min-h-[38px] px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
               zeroPairCount > 0
                 ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 active:scale-95 shadow-md animate-pulse'
                 : 'bg-slate-800 text-slate-400 hover:text-slate-200'
@@ -145,7 +145,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
           <button
             id="tool-organize-tiles-btn"
             type="button"
-            className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-colors active:scale-95 flex items-center gap-1"
+            className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-colors active:scale-95 flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
             onClick={onOrganizeStandardOrder}
             title="Auto-organize tiles in standard algebraic order"
           >
@@ -159,7 +159,7 @@ export const SlimTileToolbox: React.FC<TilePaletteProps> = ({
           <button
             id="tool-clear-canvas-btn"
             type="button"
-            className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-950/60 hover:text-red-300 border border-slate-700 hover:border-red-600/40 text-slate-400 text-xs font-bold transition-colors active:scale-95 flex items-center gap-1"
+            className="min-h-[38px] px-2 sm:px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-950/60 hover:text-red-300 border border-slate-700 hover:border-red-600/40 text-slate-400 text-xs font-bold transition-colors active:scale-95 flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
             onClick={onClearCanvas}
             title="Clear all tiles from workspace"
           >
