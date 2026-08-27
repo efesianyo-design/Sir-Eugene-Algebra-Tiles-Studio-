@@ -1011,8 +1011,8 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         </div>
       )}
 
-      {/* Floating Canvas View Controls (Zoom, Reset, Snap) - Min 44px touch targets */}
-      <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl z-30">
+      {/* Floating Canvas View Controls (Zoom, Reset) - Bottom-Right to avoid banner overlap */}
+      <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl z-30">
         <button
           id="canvas-zoom-in-btn"
           type="button"
