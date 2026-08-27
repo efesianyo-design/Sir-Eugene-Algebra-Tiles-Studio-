@@ -133,18 +133,18 @@ export const TilePalette: React.FC<TilePaletteProps> = ({
 
             {/* Positive & Negative Spawn Buttons */}
             <div className="grid grid-cols-2 gap-2">
-              {/* Positive Button */}
+              {/* Positive Button (Min 44px tap target) */}
               <button
                 id={`spawn-pos-${item.kind}-${item.rotation || 0}`}
                 type="button"
-                className="group relative flex flex-col items-center justify-center p-2 rounded-lg border border-emerald-600/30 hover:border-emerald-500/80 active:scale-95 transition-all bg-slate-900/80 hover:bg-emerald-950/20"
+                className="min-h-[52px] group relative flex flex-col items-center justify-center p-2 rounded-xl border border-emerald-600/40 hover:border-emerald-500 active:scale-95 transition-all bg-slate-900/90 hover:bg-emerald-950/30"
                 onClick={() => {
                   playSound('pickup');
                   onSpawnTile(item.kind, 1, item.rotation || 0);
                 }}
               >
                 <div
-                  className={`${item.aspectClass} rounded flex items-center justify-center font-bold text-xs shadow-md border mb-1`}
+                  className={`${item.aspectClass} rounded-md flex items-center justify-center font-bold text-xs shadow-md border mb-1`}
                   style={{
                     backgroundColor: item.posBg,
                     borderColor: 'rgba(255,255,255,0.4)',
@@ -153,23 +153,23 @@ export const TilePalette: React.FC<TilePaletteProps> = ({
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[11px] font-semibold text-emerald-400">
+                <span className="text-[11px] font-bold text-emerald-400">
                   + {item.kind === 'unit' ? '1' : item.kind}
                 </span>
               </button>
 
-              {/* Negative Button */}
+              {/* Negative Button (Min 44px tap target) */}
               <button
                 id={`spawn-neg-${item.kind}-${item.rotation || 0}`}
                 type="button"
-                className="group relative flex flex-col items-center justify-center p-2 rounded-lg border border-red-600/30 hover:border-red-500/80 active:scale-95 transition-all bg-slate-900/80 hover:bg-red-950/20"
+                className="min-h-[52px] group relative flex flex-col items-center justify-center p-2 rounded-xl border border-red-600/40 hover:border-red-500 active:scale-95 transition-all bg-slate-900/90 hover:bg-red-950/30"
                 onClick={() => {
                   playSound('pickup');
                   onSpawnTile(item.kind, -1, item.rotation || 0);
                 }}
               >
                 <div
-                  className={`${item.aspectClass} rounded flex items-center justify-center font-bold text-xs shadow-md border mb-1`}
+                  className={`${item.aspectClass} rounded-md flex items-center justify-center font-bold text-xs shadow-md border mb-1`}
                   style={{
                     backgroundColor: item.negBg,
                     borderColor: 'rgba(255,255,255,0.4)',
@@ -178,7 +178,7 @@ export const TilePalette: React.FC<TilePaletteProps> = ({
                 >
                   <Minus className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[11px] font-semibold text-red-400">
+                <span className="text-[11px] font-bold text-red-400">
                   - {item.kind === 'unit' ? '1' : item.kind}
                 </span>
               </button>
@@ -194,33 +194,33 @@ export const TilePalette: React.FC<TilePaletteProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             <span>Quick Polynomials</span>
           </div>
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2">
             <button
               id="preset-quad-btn"
               type="button"
-              className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-between transition-colors"
+              className="min-h-[44px] w-full text-left text-xs px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 active:scale-98 text-slate-200 hover:text-white flex items-center justify-between transition-colors border border-slate-700/50"
               onClick={() => onQuickPreset('quad')}
             >
-              <span>x² + 3x + 2</span>
-              <span className="text-[10px] text-emerald-400 font-mono">Factorable</span>
+              <span className="font-semibold">x² + 3x + 2</span>
+              <span className="text-[11px] text-emerald-400 font-mono font-bold">Factorable</span>
             </button>
             <button
               id="preset-linear-btn"
               type="button"
-              className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-between transition-colors"
+              className="min-h-[44px] w-full text-left text-xs px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 active:scale-98 text-slate-200 hover:text-white flex items-center justify-between transition-colors border border-slate-700/50"
               onClick={() => onQuickPreset('linear')}
             >
-              <span>2x + 4</span>
-              <span className="text-[10px] text-cyan-400 font-mono">Linear</span>
+              <span className="font-semibold">2x + 4 = 8</span>
+              <span className="text-[11px] text-cyan-400 font-mono font-bold">Equation</span>
             </button>
             <button
               id="preset-zeropair-btn"
               type="button"
-              className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-between transition-colors"
+              className="min-h-[44px] w-full text-left text-xs px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 active:scale-98 text-slate-200 hover:text-white flex items-center justify-between transition-colors border border-slate-700/50"
               onClick={() => onQuickPreset('zeropair')}
             >
-              <span>3x - 2x + 2 - 2</span>
-              <span className="text-[10px] text-amber-400 font-mono">Zero Pairs</span>
+              <span className="font-semibold">Zero-Pair Demo</span>
+              <span className="text-[11px] text-amber-400 font-mono font-bold">Overlapping</span>
             </button>
           </div>
         </div>

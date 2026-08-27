@@ -107,30 +107,33 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
       {/* Brand & Mode Switchers */}
       <div className="flex items-center gap-2 md:gap-4 overflow-x-auto py-1">
         {/* App Title */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-600 flex items-center justify-center shadow-md">
+        <div className="flex items-center gap-2.5 flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-600 flex items-center justify-center shadow-md flex-shrink-0">
             <Layers className="w-4 h-4 text-white" />
           </div>
-          <div className="hidden sm:block">
+          <div className="flex flex-col justify-center">
             <h1 className="font-extrabold text-sm text-slate-100 tracking-tight leading-tight">
               Algebra Tiles <span className="text-cyan-400 font-semibold">Studio</span>
             </h1>
+            <span className="text-[10px] font-medium text-slate-400 leading-none mt-0.5 whitespace-nowrap">
+              Sir Eugene Technologies
+            </span>
           </div>
         </div>
 
         {/* Workspace Mode Switcher Toolbar */}
         <div
           id="mode-switcher-toolbar"
-          className="flex items-center bg-slate-950/90 p-1 rounded-xl border border-slate-800 gap-1 flex-shrink-0 shadow-sm"
+          className="flex items-center bg-slate-950/90 p-1 rounded-2xl border border-slate-800 gap-1 flex-shrink-0 shadow-sm"
         >
           {/* 1. Free Explore Mode */}
           <button
             id="nav-mode-freeform-btn"
             type="button"
             title="Free Explore Mode: Blank canvas for building expressions and simplifying terms"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
               mode === 'freeform'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
+                ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/60 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
             onClick={() => {
@@ -138,7 +141,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               onSetMode('freeform');
             }}
           >
-            <Layers className="w-3.5 h-3.5" />
+            <Layers className="w-4 h-4" />
             <span>Free Explore</span>
           </button>
 
@@ -147,9 +150,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             id="nav-mode-equation-btn"
             type="button"
             title="Equation Mat Mode: Split canvas with vertical divider and '=' symbol to solve and balance equations"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
               mode === 'equation'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
+                ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/60 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
             onClick={() => {
@@ -157,7 +160,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               onSetMode('equation');
             }}
           >
-            <Scale className="w-3.5 h-3.5" />
+            <Scale className="w-4 h-4" />
             <span>Equation Mat</span>
           </button>
 
@@ -166,9 +169,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             id="nav-mode-factor-btn"
             type="button"
             title="Factoring / Area Multiplication Grid: L-shaped factor margins framing inner product rectangle"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
               mode === 'factor'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
+                ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/60 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
             onClick={() => {
@@ -176,7 +179,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               onSetMode('factor');
             }}
           >
-            <Grid className="w-3.5 h-3.5" />
+            <Grid className="w-4 h-4" />
             <span>Factoring Grid</span>
           </button>
         </div>
@@ -185,13 +188,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
         <button
           id="nav-challenges-modal-btn"
           type="button"
-          className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all shadow-sm flex-shrink-0"
+          className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all shadow-sm flex-shrink-0"
           onClick={() => {
             playSound('click');
             onOpenChallenges();
           }}
         >
-          <Trophy className="w-3.5 h-3.5 text-amber-400" />
+          <Trophy className="w-4 h-4 text-amber-400" />
           <span>Practice Puzzles</span>
         </button>
       </div>
@@ -199,14 +202,14 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
       {/* Right Controls: Undo/Redo, Snapping, Sound, Help, Export, PWA */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {/* Undo / Redo */}
-        <div className="hidden sm:flex items-center bg-slate-950/70 border border-slate-800 rounded-lg p-0.5">
+        <div className="hidden sm:flex items-center bg-slate-950/70 border border-slate-800 rounded-xl p-0.5">
           <button
             id="nav-undo-btn"
             type="button"
             title="Undo (Ctrl+Z)"
             disabled={!canUndo}
-            className={`p-1.5 rounded-md transition-colors ${
-              canUndo ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-600 cursor-not-allowed'
+            className={`min-h-[44px] min-w-[44px] p-2.5 rounded-lg transition-colors flex items-center justify-center ${
+              canUndo ? 'text-slate-300 hover:bg-slate-800 hover:text-white active:scale-95' : 'text-slate-600 cursor-not-allowed'
             }`}
             onClick={onUndo}
           >
@@ -217,8 +220,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             type="button"
             title="Redo (Ctrl+Y)"
             disabled={!canRedo}
-            className={`p-1.5 rounded-md transition-colors ${
-              canRedo ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-600 cursor-not-allowed'
+            className={`min-h-[44px] min-w-[44px] p-2.5 rounded-lg transition-colors flex items-center justify-center ${
+              canRedo ? 'text-slate-300 hover:bg-slate-800 hover:text-white active:scale-95' : 'text-slate-600 cursor-not-allowed'
             }`}
             onClick={onRedo}
           >
@@ -231,7 +234,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           id="nav-toggle-snap-btn"
           type="button"
           title={`Snap to Grid: ${gridConfig.snapToGrid ? 'ON' : 'OFF'}`}
-          className={`p-2 rounded-lg border transition-colors ${
+          className={`min-h-[44px] min-w-[44px] p-2.5 rounded-xl border transition-colors flex items-center justify-center active:scale-95 ${
             gridConfig.snapToGrid
               ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-300'
               : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300'
@@ -246,7 +249,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           id="nav-toggle-grid-btn"
           type="button"
           title={`Grid Lines: ${gridConfig.showGrid ? 'ON' : 'OFF'}`}
-          className={`p-2 rounded-lg border transition-colors ${
+          className={`min-h-[44px] min-w-[44px] p-2.5 rounded-xl border transition-colors flex items-center justify-center active:scale-95 ${
             gridConfig.showGrid
               ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-300'
               : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300'
@@ -261,7 +264,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           id="nav-toggle-sound-btn"
           type="button"
           title={`Sound Effects: ${soundOn ? 'ON' : 'MUTED'}`}
-          className={`p-2 rounded-lg border transition-colors ${
+          className={`min-h-[44px] min-w-[44px] p-2.5 rounded-xl border transition-colors flex items-center justify-center active:scale-95 ${
             soundOn
               ? 'bg-slate-950/60 border-slate-800 text-slate-300 hover:text-white'
               : 'bg-slate-950/60 border-slate-800 text-slate-600'
@@ -276,7 +279,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           id="nav-export-png-btn"
           type="button"
           title="Export Workspace as Image / LaTeX"
-          className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+          className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors flex items-center justify-center active:scale-95"
           onClick={onExportPNG}
         >
           <Download className="w-4 h-4" />
@@ -285,7 +288,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
         {/* PWA Standalone / Offline Badge */}
         <div
           title={isOnline ? 'Online (Cached for Offline Use)' : 'Offline Mode (PWA)'}
-          className={`hidden md:flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border font-medium ${
+          className={`hidden md:flex min-h-[44px] items-center gap-1.5 text-[11px] px-3 py-2 rounded-xl border font-bold ${
             isOnline
               ? 'bg-emerald-950/40 border-emerald-600/40 text-emerald-400'
               : 'bg-amber-950/40 border-amber-600/40 text-amber-400'
@@ -301,10 +304,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             id="nav-install-pwa-btn"
             type="button"
             title="Install App (PWA)"
-            className="flex items-center gap-1 px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
+            className="min-h-[44px] flex items-center gap-1.5 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
             onClick={handleInstallClick}
           >
-            <Smartphone className="w-3.5 h-3.5" />
+            <Smartphone className="w-4 h-4" />
             <span className="hidden sm:inline">Install</span>
           </button>
         )}
@@ -314,7 +317,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           id="nav-help-guide-btn"
           type="button"
           title="How to Use & Algebra Guide"
-          className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-cyan-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
+          className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-cyan-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors flex items-center justify-center active:scale-95"
           onClick={onOpenHelp}
         >
           <HelpCircle className="w-4 h-4" />

@@ -91,6 +91,7 @@ export const PracticeChallenges: React.FC<PracticeChallengesProps> = ({
       onSetWorkspaceMode('freeform');
     }
     onSelectChallenge(challenge);
+    onClose();
   };
 
   return (

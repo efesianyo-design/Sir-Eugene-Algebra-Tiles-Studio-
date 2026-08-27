@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate, Challenge } from './types';
-import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions } from './utils/constants';
+import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions, BUILT_IN_CHALLENGES } from './utils/constants';
 import { organizeTilesInStandardOrder, findZeroPairs } from './utils/mathEngine';
 import { playSound } from './utils/audio';
 
@@ -11,10 +11,25 @@ import { ExpressionInspector } from './components/ExpressionInspector';
 import { MobileBottomTray } from './components/MobileBottomTray';
 import { PracticeChallenges } from './components/PracticeChallenges';
 import { HelpGuideModal } from './components/HelpGuideModal';
+import { ActiveChallengeHUD } from './components/ActiveChallengeHUD';
 
 export default function App() {
-  // Initial default starter tiles (perfect (x + 1)(x + 1) = x² + 2x + 1 area model)
+  // LocalStorage persistence key
+  const STORAGE_KEY = 'algebra_tiles_workspace_v2';
+
+  // Restore initial state from localStorage if available, or default to (x+1)(x+1) = x² + 2x + 1
   const [tiles, setTiles] = useState<TileData[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.tiles) && parsed.tiles.length >= 0) {
+          return parsed.tiles;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load saved workspace from localStorage', e);
+    }
     return [
       { id: 't-init-1', kind: 'x2', sign: 1, x: 84, y: 84, rotation: 0, zone: 'main' }, // 148 x 148px
       { id: 't-init-2', kind: 'x', sign: 1, x: 232, y: 84, rotation: 90, zone: 'main' }, // 28 x 148px vertical
@@ -28,19 +43,75 @@ export default function App() {
   const [historyIndex, setHistoryIndex] = useState(0);
 
   // Workspace Mode
-  const [mode, setMode] = useState<WorkspaceMode>('freeform');
+  const [mode, setMode] = useState<WorkspaceMode>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.mode === 'freeform' || parsed.mode === 'equation' || parsed.mode === 'factor') {
+          return parsed.mode;
+        }
+      }
+    } catch {}
+    return 'freeform';
+  });
 
   // Grid Configuration
-  const [gridConfig, setGridConfig] = useState<GridConfig>({
-    unitSize: BASE_UNIT,
-    xSize: X_UNIT,
-    ySize: Y_UNIT,
-    snapToGrid: true,
-    showGrid: true,
+  const [gridConfig, setGridConfig] = useState<GridConfig>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.gridConfig) {
+          return {
+            unitSize: BASE_UNIT,
+            xSize: X_UNIT,
+            ySize: Y_UNIT,
+            snapToGrid: parsed.gridConfig.snapToGrid ?? true,
+            showGrid: parsed.gridConfig.showGrid ?? true,
+          };
+        }
+      }
+    } catch {}
+    return {
+      unitSize: BASE_UNIT,
+      xSize: X_UNIT,
+      ySize: Y_UNIT,
+      snapToGrid: true,
+      showGrid: true,
+    };
   });
 
   // Zero-pair auto-cancel
-  const [autoCancelZeroPairs, setAutoCancelZeroPairs] = useState(false);
+  const [autoCancelZeroPairs, setAutoCancelZeroPairs] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Boolean(parsed.autoCancelZeroPairs);
+      }
+    } catch {}
+    return false;
+  });
+
+  // Auto-save canvas state to localStorage on changes
+  useEffect(() => {
+    try {
+      const dataToSave = {
+        tiles,
+        mode,
+        gridConfig: {
+          snapToGrid: gridConfig.snapToGrid,
+          showGrid: gridConfig.showGrid,
+        },
+        autoCancelZeroPairs,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    } catch (err) {
+      console.warn('Auto-save to localStorage failed', err);
+    }
+  }, [tiles, mode, gridConfig.snapToGrid, gridConfig.showGrid, autoCancelZeroPairs]);
 
   // Modals
   const [showChallengesModal, setShowChallengesModal] = useState(false);
@@ -202,6 +273,48 @@ export default function App() {
     }
   };
 
+  // Reset current challenge to its initial problem state
+  const handleResetChallenge = () => {
+    playSound('clear');
+    const challenge = BUILT_IN_CHALLENGES.find((c) => c.id === activeChallengeId);
+    if (challenge && challenge.initialTiles) {
+      const spawned: TileData[] = challenge.initialTiles.map((t, idx) => ({
+        ...t,
+        id: `ch-tile-${idx}-${Date.now()}`,
+      }));
+      setTiles(spawned);
+      recordHistory(spawned);
+    } else {
+      setTiles([]);
+      recordHistory([]);
+    }
+  };
+
+  // Advance to next challenge in curriculum
+  const handleNextChallenge = () => {
+    const currentIndex = BUILT_IN_CHALLENGES.findIndex((c) => c.id === activeChallengeId);
+    if (currentIndex >= 0 && currentIndex < BUILT_IN_CHALLENGES.length - 1) {
+      const nextChallenge = BUILT_IN_CHALLENGES[currentIndex + 1];
+      if (nextChallenge.category === 'equations') {
+        setMode('equation');
+      } else if (nextChallenge.category === 'multiplication' || nextChallenge.category === 'factoring') {
+        setMode('factor');
+      } else {
+        setMode('freeform');
+      }
+      handleSelectChallenge(nextChallenge);
+    } else {
+      setActiveChallengeId(null);
+    }
+  };
+
+  const handleExitChallenge = () => {
+    playSound('click');
+    setActiveChallengeId(null);
+  };
+
+  const activeChallenge = BUILT_IN_CHALLENGES.find((c) => c.id === activeChallengeId);
+
   // Export workspace as image
   const handleExportPNG = () => {
     playSound('click');
@@ -278,6 +391,17 @@ export default function App() {
 
         {/* Center Interactive Math Canvas Viewport (On mobile: 70vh height) */}
         <div className="h-[70vh] md:h-auto md:flex-1 flex flex-col relative overflow-hidden flex-shrink-0">
+          {activeChallenge && (
+            <ActiveChallengeHUD
+              challenge={activeChallenge}
+              tiles={tiles}
+              onResetChallenge={handleResetChallenge}
+              onNextChallenge={handleNextChallenge}
+              onExitChallenge={handleExitChallenge}
+              onOpenChallengesModal={() => setShowChallengesModal(true)}
+            />
+          )}
+
           <WorkspaceCanvas
             tiles={tiles}
             mode={mode}

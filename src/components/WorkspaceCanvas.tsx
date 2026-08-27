@@ -5,7 +5,26 @@ import { MathView } from './MathView';
 import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions } from '../utils/constants';
 import { playSound } from '../utils/audio';
 import { findZeroPairs, computeExpressionBreakdown, computeFactoringModel } from '../utils/mathEngine';
-import { Maximize2, Sparkles, Scale, Grid, Magnet, ZoomIn, ZoomOut, RotateCcw, Copy, Check, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Maximize2,
+  Sparkles,
+  Scale,
+  Grid,
+  Magnet,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Copy,
+  Check,
+  CheckCircle2,
+  AlertCircle,
+  RotateCw,
+  RefreshCw,
+  ArrowLeftRight,
+  Trash2,
+  X,
+  Layers,
+} from 'lucide-react';
 
 interface WorkspaceCanvasProps {
   tiles: TileData[];
@@ -63,6 +82,21 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   });
 
   const expressionBreakdown = computeExpressionBreakdown(tiles);
+
+  // Equation Mode left vs right side split
+  const canvasMidX = (containerRef.current?.clientWidth || 800) / 2;
+  const leftSideTiles = tiles.filter((t) => t.zone === 'left' || (t.zone !== 'right' && t.x < canvasMidX));
+  const rightSideTiles = tiles.filter((t) => t.zone === 'right' || (t.zone !== 'left' && t.x >= canvasMidX));
+  const leftBreakdown = computeExpressionBreakdown(leftSideTiles);
+  const rightBreakdown = computeExpressionBreakdown(rightSideTiles);
+  const isEquationBalanced =
+    mode === 'equation' &&
+    leftSideTiles.length > 0 &&
+    rightSideTiles.length > 0 &&
+    leftBreakdown.simplifiedLatex === rightBreakdown.simplifiedLatex;
+
+  // Factoring Mode area model computation
+  const factoringResult = computeFactoringModel(tiles);
 
   // Calculate snap position for a tile coordinate
   const snapCoordinate = useCallback(
@@ -476,6 +510,68 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     }
   };
 
+  // Action methods for selected tile(s)
+  const handleRotateSelected = useCallback(() => {
+    if (selectedTileIds.size === 0) return;
+    playSound('snap');
+    const updated = tiles.map((t) => {
+      if (selectedTileIds.has(t.id)) {
+        const newRot = (t.rotation === 0 ? 90 : 0) as 0 | 90;
+        return { ...t, rotation: newRot };
+      }
+      return t;
+    });
+    setTiles(updated);
+    onTilesChange(updated);
+  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+
+  const handleFlipSignSelected = useCallback(() => {
+    if (selectedTileIds.size === 0) return;
+    playSound('flip');
+    const updated = tiles.map((t) =>
+      selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
+    );
+    setTiles(updated);
+    onTilesChange(updated);
+  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+
+  const handleDuplicateSelected = useCallback(() => {
+    if (selectedTileIds.size === 0) return;
+    playSound('pickup');
+    const newDuplicates: TileData[] = [];
+    const newSelectedIds = new Set<string>();
+
+    tiles.forEach((t) => {
+      if (selectedTileIds.has(t.id)) {
+        const dupId = `tile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const dup: TileData = {
+          ...t,
+          id: dupId,
+          x: t.x + 28,
+          y: t.y + 28,
+        };
+        newDuplicates.push(dup);
+        newSelectedIds.add(dupId);
+      }
+    });
+
+    if (newDuplicates.length > 0) {
+      const updated = [...tiles, ...newDuplicates];
+      setTiles(updated);
+      setSelectedTileIds(newSelectedIds);
+      onTilesChange(updated);
+    }
+  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedTileIds.size === 0) return;
+    playSound('clear');
+    const updated = tiles.filter((t) => !selectedTileIds.has(t.id));
+    setTiles(updated);
+    setSelectedTileIds(new Set());
+    onTilesChange(updated);
+  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+
   // Tile single actions
   const handleFlipSign = (tileId: string) => {
     playSound('flip');
@@ -533,33 +629,22 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedTileIds.size > 0) {
           e.preventDefault();
-          playSound('clear');
-          const updated = tiles.filter((t) => !selectedTileIds.has(t.id));
-          setTiles(updated);
-          setSelectedTileIds(new Set());
-          onTilesChange(updated);
+          handleDeleteSelected();
         }
       } else if (e.key.toLowerCase() === 'f') {
         if (selectedTileIds.size > 0) {
           e.preventDefault();
-          playSound('flip');
-          const updated = tiles.map((t) =>
-            selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
-          );
-          setTiles(updated);
-          onTilesChange(updated);
+          handleFlipSignSelected();
         }
       } else if (e.key.toLowerCase() === 'r') {
         if (selectedTileIds.size > 0) {
           e.preventDefault();
-          playSound('snap');
-          const updated = tiles.map((t) =>
-            selectedTileIds.has(t.id) && (t.kind === 'x' || t.kind === 'y' || t.kind === 'xy')
-              ? { ...t, rotation: (t.rotation === 0 ? 90 : 0) as 0 | 90 }
-              : t
-          );
-          setTiles(updated);
-          onTilesChange(updated);
+          handleRotateSelected();
+        }
+      } else if (e.key.toLowerCase() === 'd' && (e.ctrlKey || e.metaKey)) {
+        if (selectedTileIds.size > 0) {
+          e.preventDefault();
+          handleDuplicateSelected();
         }
       } else if (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -571,7 +656,14 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+  }, [
+    tiles,
+    selectedTileIds,
+    handleDeleteSelected,
+    handleFlipSignSelected,
+    handleRotateSelected,
+    handleDuplicateSelected,
+  ]);
 
   return (
     <div
@@ -725,84 +817,178 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       {/* Sticky Live Equation / Expression Display Card (Top Center) */}
       <div
         id="sticky-live-expression-card"
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-2xl shadow-md hover:shadow-lg transition-all max-w-[94vw] sm:max-w-md pointer-events-auto"
+        className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-2xl shadow-md hover:shadow-lg transition-all max-w-[96vw] sm:max-w-xl pointer-events-auto"
       >
-        {/* Term Count Pill Badges */}
-        <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 pr-3">
-          {/* Quadratic x² term pill */}
-          <span
-            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-              expressionBreakdown.x2 !== 0
-                ? expressionBreakdown.x2 > 0
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                  : 'bg-red-100 text-red-700 border border-red-200'
-                : 'bg-slate-100 text-slate-400'
-            }`}
-            title="Quadratic x² count"
-          >
-            {expressionBreakdown.x2 !== 0
-              ? `${expressionBreakdown.x2 > 0 ? '+' : ''}${expressionBreakdown.x2}x²`
-              : '0x²'}
-          </span>
+        {mode === 'equation' ? (
+          // --- EQUATION MAT MODE LIVE EQUATION READOUT ---
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 justify-between">
+            {/* Left Side Term */}
+            <div className="flex flex-col items-center min-w-[70px] sm:min-w-[100px] text-cyan-800">
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                Left Side ({leftSideTiles.length})
+              </span>
+              <div className="text-sm sm:text-base font-bold text-cyan-900">
+                <MathView latex={leftBreakdown.simplifiedLatex || '0'} />
+              </div>
+            </div>
 
-          {/* Variable x term pill */}
-          <span
-            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-              expressionBreakdown.x !== 0
-                ? expressionBreakdown.x > 0
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-100 text-red-700 border border-red-200'
-                : 'bg-slate-100 text-slate-400'
-            }`}
-            title="Variable x count"
-          >
-            {expressionBreakdown.x !== 0
-              ? `${expressionBreakdown.x > 0 ? '+' : ''}${expressionBreakdown.x}x`
-              : '0x'}
-          </span>
+            {/* Equals Sign & Balance Pill */}
+            <div className="flex flex-col items-center px-1">
+              <div className="text-base sm:text-lg font-black text-slate-700 font-mono">=</div>
+              {isEquationBalanced ? (
+                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Balanced
+                </span>
+              ) : (
+                <span className="text-[9px] text-slate-400 font-medium">Equation</span>
+              )}
+            </div>
 
-          {/* Constant 1 unit pill */}
-          <span
-            className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
-              expressionBreakdown.unit !== 0
-                ? expressionBreakdown.unit > 0
-                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                  : 'bg-red-100 text-red-700 border border-red-200'
-                : 'bg-slate-100 text-slate-400'
-            }`}
-            title="Unit constant count"
-          >
-            {expressionBreakdown.unit !== 0
-              ? `${expressionBreakdown.unit > 0 ? '+' : ''}${expressionBreakdown.unit}`
-              : '0'}
-          </span>
-        </div>
+            {/* Right Side Term */}
+            <div className="flex flex-col items-center min-w-[70px] sm:min-w-[100px] text-amber-800">
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                Right Side ({rightSideTiles.length})
+              </span>
+              <div className="text-sm sm:text-base font-bold text-amber-900">
+                <MathView latex={rightBreakdown.simplifiedLatex || '0'} />
+              </div>
+            </div>
 
-        {/* Simplified Live Expression Rendering */}
-        <div className="flex flex-col items-center min-w-[120px]">
-          <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-            Live Expression
-          </span>
-          <div className="text-base sm:text-lg font-bold text-indigo-900 tracking-wide">
-            <MathView latex={expressionBreakdown.simplifiedLatex} />
+            {/* Copy Equation Button */}
+            <button
+              id="sticky-copy-equation-btn"
+              type="button"
+              title="Copy Equation LaTeX"
+              className="ml-1 p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
+              onClick={() => {
+                playSound('click');
+                const eqText = `${leftBreakdown.simplifiedLatex || '0'} = ${rightBreakdown.simplifiedLatex || '0'}`;
+                navigator.clipboard.writeText(eqText);
+                setCopiedExpr(true);
+                setTimeout(() => setCopiedExpr(false), 2000);
+              }}
+            >
+              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
           </div>
-        </div>
+        ) : mode === 'factor' ? (
+          // --- FACTORING / AREA MULTIPLICATION GRID LIVE READOUT ---
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 justify-between">
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                <span>Factoring Model</span>
+                {factoringResult.isValidFactorization ? (
+                  <span className="text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Valid Product
+                  </span>
+                ) : (
+                  <span className="text-slate-400 font-normal">
+                    (Left × Top = Product)
+                  </span>
+                )}
+              </div>
+              <div className="text-sm sm:text-base font-bold text-indigo-900 tracking-wide mt-0.5">
+                <MathView latex={factoringResult.fullEquationLatex} />
+              </div>
+            </div>
 
-        {/* Copy Expression Button */}
-        <button
-          id="sticky-copy-expr-btn"
-          type="button"
-          title="Copy Expression LaTeX"
-          className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
-          onClick={() => {
-            playSound('click');
-            navigator.clipboard.writeText(expressionBreakdown.simplifiedLatex);
-            setCopiedExpr(true);
-            setTimeout(() => setCopiedExpr(false), 2000);
-          }}
-        >
-          {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-        </button>
+            {/* Copy Factoring Equation Button */}
+            <button
+              id="sticky-copy-factor-btn"
+              type="button"
+              title="Copy Factoring Equation"
+              className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
+              onClick={() => {
+                playSound('click');
+                navigator.clipboard.writeText(factoringResult.fullEquationLatex);
+                setCopiedExpr(true);
+                setTimeout(() => setCopiedExpr(false), 2000);
+              }}
+            >
+              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        ) : (
+          // --- FREE EXPLORE MODE LIVE SIMPLIFIED EXPRESSION READOUT ---
+          <>
+            {/* Term Count Pill Badges */}
+            <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 pr-3">
+              {/* Quadratic x² term pill */}
+              <span
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+                  expressionBreakdown.x2 !== 0
+                    ? expressionBreakdown.x2 > 0
+                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                      : 'bg-red-100 text-red-700 border border-red-200'
+                    : 'bg-slate-100 text-slate-400'
+                }`}
+                title="Quadratic x² count"
+              >
+                {expressionBreakdown.x2 !== 0
+                  ? `${expressionBreakdown.x2 > 0 ? '+' : ''}${expressionBreakdown.x2}x²`
+                  : '0x²'}
+              </span>
+
+              {/* Variable x term pill */}
+              <span
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+                  expressionBreakdown.x !== 0
+                    ? expressionBreakdown.x > 0
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-red-100 text-red-700 border border-red-200'
+                    : 'bg-slate-100 text-slate-400'
+                }`}
+                title="Variable x count"
+              >
+                {expressionBreakdown.x !== 0
+                  ? `${expressionBreakdown.x > 0 ? '+' : ''}${expressionBreakdown.x}x`
+                  : '0x'}
+              </span>
+
+              {/* Constant 1 unit pill */}
+              <span
+                className={`px-2 py-0.5 rounded-md text-[11px] font-bold font-mono ${
+                  expressionBreakdown.unit !== 0
+                    ? expressionBreakdown.unit > 0
+                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'bg-red-100 text-red-700 border border-red-200'
+                    : 'bg-slate-100 text-slate-400'
+                }`}
+                title="Unit constant count"
+              >
+                {expressionBreakdown.unit !== 0
+                  ? `${expressionBreakdown.unit > 0 ? '+' : ''}${expressionBreakdown.unit}`
+                  : '0'}
+              </span>
+            </div>
+
+            {/* Simplified Live Expression Rendering */}
+            <div className="flex flex-col items-center min-w-[120px]">
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                Live Expression
+              </span>
+              <div className="text-base sm:text-lg font-bold text-indigo-900 tracking-wide">
+                <MathView latex={expressionBreakdown.simplifiedLatex} />
+              </div>
+            </div>
+
+            {/* Copy Expression Button */}
+            <button
+              id="sticky-copy-expr-btn"
+              type="button"
+              title="Copy Expression LaTeX"
+              className="ml-auto p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 rounded-lg transition-colors"
+              onClick={() => {
+                playSound('click');
+                navigator.clipboard.writeText(expressionBreakdown.simplifiedLatex);
+                setCopiedExpr(true);
+                setTimeout(() => setCopiedExpr(false), 2000);
+              }}
+            >
+              {copiedExpr ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Zero Pair Floating Cancel Notification / Pill */}
@@ -825,74 +1011,106 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         </div>
       )}
 
-      {/* Floating Canvas View Controls (Zoom, Reset, Snap) */}
-      <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800 p-1.5 rounded-xl shadow-lg z-30">
+      {/* Floating Canvas View Controls (Zoom, Reset, Snap) - Min 44px touch targets */}
+      <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl z-30">
         <button
           id="canvas-zoom-in-btn"
           type="button"
           title="Zoom In"
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
           onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.0, v.scale + 0.15) }))}
         >
-          <ZoomIn className="w-4 h-4" />
+          <ZoomIn className="w-5 h-5" />
         </button>
         <button
           id="canvas-zoom-out-btn"
           type="button"
           title="Zoom Out"
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
           onClick={() => setViewTransform((v) => ({ ...v, scale: Math.max(0.5, v.scale - 0.15) }))}
         >
-          <ZoomOut className="w-4 h-4" />
+          <ZoomOut className="w-5 h-5" />
         </button>
         <button
           id="canvas-reset-view-btn"
           type="button"
           title="Reset View Position"
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
           onClick={() => setViewTransform({ x: 0, y: 0, scale: 1 })}
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Selection Stats Bar */}
+      {/* Floating Action Bar for Selected Tile(s) - 44px Touch Targets */}
       {selectedTileIds.size > 0 && (
-        <div className="absolute top-4 left-4 bg-slate-900/90 border border-slate-700 px-3 py-1.5 rounded-lg text-xs text-slate-200 flex items-center gap-3 z-30 shadow-lg">
-          <span className="font-semibold text-cyan-400">
-            {selectedTileIds.size} tile{selectedTileIds.size > 1 ? 's' : ''} selected
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              id="batch-flip-btn"
-              type="button"
-              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-[11px]"
-              onClick={() => {
-                playSound('flip');
-                const updated = tiles.map((t) =>
-                  selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
-                );
-                setTiles(updated);
-                onTilesChange(updated);
-              }}
-            >
-              Flip Signs (F)
-            </button>
-            <button
-              id="batch-del-btn"
-              type="button"
-              className="px-2 py-0.5 bg-red-950/80 hover:bg-red-900 text-red-300 rounded text-[11px]"
-              onClick={() => {
-                playSound('clear');
-                const updated = tiles.filter((t) => !selectedTileIds.has(t.id));
-                setTiles(updated);
-                setSelectedTileIds(new Set());
-                onTilesChange(updated);
-              }}
-            >
-              Delete (Del)
-            </button>
+        <div className="absolute bottom-20 sm:bottom-8 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-cyan-500/50 backdrop-blur-xl px-2 py-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 sm:gap-2 z-40 max-w-[94vw] overflow-x-auto">
+          {/* Selected Count Indicator Badge */}
+          <div className="px-2.5 py-1.5 bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>
+              {selectedTileIds.size} <span className="hidden sm:inline">Tile{selectedTileIds.size > 1 ? 's' : ''}</span>
+            </span>
           </div>
+
+          {/* 1. Rotate 90° Button */}
+          <button
+            id="floating-rotate-btn"
+            type="button"
+            title="Rotate 90° (R)"
+            className="min-h-[44px] min-w-[44px] px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-emerald-300 border border-slate-700 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm"
+            onClick={handleRotateSelected}
+          >
+            <RotateCw className="w-4 h-4 text-emerald-400" />
+            <span className="hidden md:inline">Rotate 90°</span>
+          </button>
+
+          {/* 2. Flip Sign (+ ↔ -) Button */}
+          <button
+            id="floating-flip-btn"
+            type="button"
+            title="Flip Sign + ↔ - (F)"
+            className="min-h-[44px] min-w-[44px] px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 border border-slate-700 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm"
+            onClick={handleFlipSignSelected}
+          >
+            <ArrowLeftRight className="w-4 h-4 text-amber-400" />
+            <span className="hidden md:inline">Flip Sign</span>
+          </button>
+
+          {/* 3. Duplicate Button */}
+          <button
+            id="floating-duplicate-btn"
+            type="button"
+            title="Duplicate Tile(s) (Ctrl+D)"
+            className="min-h-[44px] min-w-[44px] px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-blue-300 border border-slate-700 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm"
+            onClick={handleDuplicateSelected}
+          >
+            <Copy className="w-4 h-4 text-blue-400" />
+            <span className="hidden md:inline">Duplicate</span>
+          </button>
+
+          {/* 4. Delete Button */}
+          <button
+            id="floating-delete-btn"
+            type="button"
+            title="Delete Selected (Del / Backspace)"
+            className="min-h-[44px] min-w-[44px] px-3 py-2 bg-red-950/90 hover:bg-red-900 active:bg-red-800 text-red-300 border border-red-800 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm"
+            onClick={handleDeleteSelected}
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            <span className="hidden md:inline">Delete</span>
+          </button>
+
+          {/* Deselect Close Button */}
+          <button
+            id="floating-deselect-btn"
+            type="button"
+            title="Deselect All (Esc)"
+            className="min-h-[44px] min-w-[44px] p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
+            onClick={() => setSelectedTileIds(new Set())}
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
