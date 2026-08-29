@@ -61,3 +61,67 @@ export interface ExpressionBreakdown {
   simplifiedLatex: string;
   expandedPolynomial: string;
 }
+
+export interface SolidRectangleResult {
+  isSolidRectangle: boolean;
+  tilesInRect: TileData[];
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    width: number;
+    height: number;
+  };
+  topDimension: {
+    xCount: number;
+    unitCount: number;
+    label: string;
+    latex: string;
+  };
+  leftDimension: {
+    xCount: number;
+    unitCount: number;
+    label: string;
+    latex: string;
+  };
+  productBreakdown: ExpressionBreakdown;
+  factoredLatex: string;
+  fullEquationLatex: string;
+  isValidTrinomialFactoring: boolean;
+}
+
+export interface StudentProfile {
+  id?: string;
+  name: string;
+  studentId?: string;
+  classOrHouse?: string;
+  classGroup?: string;
+  level?: string;
+  grade?: string;
+  avatarSeed?: string;
+  joinedAt: number;
+  createdAt?: number;
+}
+
+export interface StudentActivityLog {
+  id: string;
+  timestamp: number;
+  studentName: string;
+  studentId?: string;
+  studentAvatar?: string;
+  classOrHouse?: string;
+  level?: string;
+  activityType:
+    | 'equation_solved'
+    | 'factoring_completed'
+    | 'zero_pairs_mastered'
+    | 'zero_pairs_cancelled'
+    | 'challenge_completed'
+    | 'challenge_solved'
+    | 'expression_simplified';
+  question: string;
+  result: string;
+  timeTakenSeconds?: number;
+  status: 'success' | 'attempt';
+}

@@ -236,8 +236,8 @@ export const generateTilesFromEquation = (
  */
 export const generateTilesForFactoring = (
   trinomialStr: string,
-  startX: number = 220,
-  startY: number = 220
+  startX: number = 180,
+  startY: number = 160
 ): { tiles: TileData[]; analysis: FactoringAnalysis } => {
   const parsed = parsePolynomialString(trinomialStr);
   const tiles: TileData[] = [];
@@ -288,15 +288,59 @@ export const generateTilesForFactoring = (
     }
   }
 
-  // Create the exact tile bank
-  parsed.terms.forEach((term, tIdx) => {
-    for (let i = 0; i < term.count; i++) {
+  // Populate the workspace with unarranged polynomial tiles for the student to solve
+  let curX = startX;
+  let curY = startY;
+
+  // 1. Place x^2 tiles
+  const x2Terms = parsed.terms.filter((t) => t.kind === 'x2');
+  x2Terms.forEach((t) => {
+    for (let i = 0; i < t.count; i++) {
       tiles.push({
-        id: `factor-tile-${tIdx}-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        kind: term.kind,
-        sign: term.sign,
-        x: startX + (i % 6) * 36,
-        y: startY + Math.floor(i / 6) * 36,
+        id: `fact-x2-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        kind: 'x2',
+        sign: t.sign,
+        x: curX,
+        y: curY,
+        rotation: 0,
+        zone: 'product_area',
+      });
+      curX += 160;
+    }
+  });
+
+  // 2. Place x-tiles in a bank
+  curX = startX + 170;
+  curY = startY;
+  const xTerms = parsed.terms.filter((t) => t.kind === 'x');
+  xTerms.forEach((t) => {
+    for (let i = 0; i < t.count; i++) {
+      tiles.push({
+        id: `fact-x-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        kind: 'x',
+        sign: t.sign,
+        x: curX + (i % 3) * 160,
+        y: curY + Math.floor(i / 3) * 36,
+        rotation: 0,
+        zone: 'product_area',
+      });
+    }
+  });
+
+  // 3. Place unit tiles in a neat cluster below
+  const totalX = xTerms.reduce((sum, t) => sum + t.count, 0);
+  const xRows = Math.ceil(totalX / 3);
+  curX = startX + 170;
+  curY = startY + Math.max(1, xRows) * 36 + 16;
+  const unitTerms = parsed.terms.filter((t) => t.kind === 'unit');
+  unitTerms.forEach((t) => {
+    for (let i = 0; i < t.count; i++) {
+      tiles.push({
+        id: `fact-u-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        kind: 'unit',
+        sign: t.sign,
+        x: curX + (i % 6) * 32,
+        y: curY + Math.floor(i / 6) * 32,
         rotation: 0,
         zone: 'product_area',
       });
@@ -318,29 +362,72 @@ export const generateTilesForFactoring = (
 };
 
 /**
- * Auto-arrange tiles into the factored geometric area model rectangle
+ * Auto-arrange tiles into the factored geometric area model rectangle with tracks
  */
 export const autoArrangeFactoredRectangle = (
   tiles: TileData[],
   factorTopUnit: number,
   factorLeftUnit: number,
-  xOrigin: number = 220,
-  yOrigin: number = 220
+  xOrigin: number = 180,
+  yOrigin: number = 160
 ): TileData[] => {
+  const xDim = getTileDimensions('x2', 0); // 140x140
+  const unitDim = getTileDimensions('unit', 0); // 28x28
+
+  const p = Math.max(0, factorTopUnit);
+  const q = Math.max(0, factorLeftUnit);
+
   const x2Tiles = tiles.filter((t) => t.kind === 'x2');
   const xTiles = tiles.filter((t) => t.kind === 'x');
   const unitTiles = tiles.filter((t) => t.kind === 'unit');
 
-  const xDim = getTileDimensions('x2', 0); // ~148x148
-  const unitDim = getTileDimensions('unit', 0); // ~28x28
-  const xBarH = getTileDimensions('x', 0); // 148x28 horizontal
-  const xBarV = getTileDimensions('x', 90); // 28x148 vertical
-
   const arranged: TileData[] = [];
-  const topXCount = Math.max(0, factorTopUnit);
-  const leftXCount = Math.max(0, factorLeftUnit);
 
-  // 1. Place x² tile at origin
+  // 1. Top Factor Track: flush at yOrigin - 32
+  arranged.push({
+    id: `top-track-x-${Date.now()}`,
+    kind: 'x',
+    sign: 1,
+    x: xOrigin,
+    y: yOrigin - 32,
+    rotation: 0,
+    zone: 'top_factor',
+  });
+  for (let i = 0; i < p; i++) {
+    arranged.push({
+      id: `top-track-u-${i}-${Date.now()}`,
+      kind: 'unit',
+      sign: 1,
+      x: xOrigin + xDim.width + i * unitDim.width,
+      y: yOrigin - 32,
+      rotation: 0,
+      zone: 'top_factor',
+    });
+  }
+
+  // 2. Left Factor Track: flush at xOrigin - 32
+  arranged.push({
+    id: `left-track-x-${Date.now()}`,
+    kind: 'x',
+    sign: 1,
+    x: xOrigin - 32,
+    y: yOrigin,
+    rotation: 90,
+    zone: 'left_factor',
+  });
+  for (let j = 0; j < q; j++) {
+    arranged.push({
+      id: `left-track-u-${j}-${Date.now()}`,
+      kind: 'unit',
+      sign: 1,
+      x: xOrigin - 32,
+      y: yOrigin + xDim.height + j * unitDim.height,
+      rotation: 0,
+      zone: 'left_factor',
+    });
+  }
+
+  // 3. Product Area: x² at (xOrigin, yOrigin)
   if (x2Tiles.length > 0) {
     arranged.push({
       ...x2Tiles[0],
@@ -349,61 +436,57 @@ export const autoArrangeFactoredRectangle = (
       rotation: 0,
       zone: 'product_area',
     });
+  } else {
+    arranged.push({
+      id: `prod-x2-${Date.now()}`,
+      kind: 'x2',
+      sign: 1,
+      x: xOrigin,
+      y: yOrigin,
+      rotation: 0,
+      zone: 'product_area',
+    });
   }
 
-  // 2. Place vertical x-tiles along the right side of x² (top factor extensions)
-  // These have width: 28px, height: 148px (rotation: 90)
-  let curX = xOrigin + xDim.width;
-  for (let i = 0; i < topXCount && i < xTiles.length; i++) {
+  // Vertical x-bars (width: 28, height: 140)
+  for (let i = 0; i < p; i++) {
+    const existing = xTiles[i];
     arranged.push({
-      ...xTiles[i],
-      x: curX,
+      ...(existing || { id: `prod-x-top-${i}-${Date.now()}`, kind: 'x', sign: 1 }),
+      x: xOrigin + xDim.width + i * unitDim.width,
       y: yOrigin,
       rotation: 90,
       zone: 'product_area',
     });
-    curX += unitDim.width;
   }
 
-  // 3. Place horizontal x-tiles below x² (left factor extensions)
-  // These have width: 148px, height: 28px (rotation: 0)
-  let curY = yOrigin + xDim.height;
-  const remainingXTiles = xTiles.slice(topXCount);
-  for (let j = 0; j < leftXCount && j < remainingXTiles.length; j++) {
+  // Horizontal x-bars (width: 140, height: 28)
+  for (let j = 0; j < q; j++) {
+    const existing = xTiles[p + j];
     arranged.push({
-      ...remainingXTiles[j],
+      ...(existing || { id: `prod-x-left-${j}-${Date.now()}`, kind: 'x', sign: 1 }),
       x: xOrigin,
-      y: curY,
+      y: yOrigin + xDim.height + j * unitDim.height,
       rotation: 0,
       zone: 'product_area',
     });
-    curY += unitDim.height;
   }
 
-  // 4. Place unit tiles in the remaining lower-right corner (width: topXCount * 28, height: leftXCount * 28)
+  // Unit tiles (28x28)
   let uIdx = 0;
-  for (let r = 0; r < leftXCount; r++) {
-    for (let c = 0; c < topXCount; c++) {
-      if (uIdx < unitTiles.length) {
-        arranged.push({
-          ...unitTiles[uIdx],
-          x: xOrigin + xDim.width + c * unitDim.width,
-          y: yOrigin + xDim.height + r * unitDim.height,
-          rotation: 0,
-          zone: 'product_area',
-        });
-        uIdx++;
-      }
+  for (let r = 0; r < q; r++) {
+    for (let c = 0; c < p; c++) {
+      const existing = unitTiles[uIdx];
+      arranged.push({
+        ...(existing || { id: `prod-u-${r}-${c}-${Date.now()}`, kind: 'unit', sign: 1 }),
+        x: xOrigin + xDim.width + c * unitDim.width,
+        y: yOrigin + xDim.height + r * unitDim.height,
+        rotation: 0,
+        zone: 'product_area',
+      });
+      uIdx++;
     }
   }
-
-  // Add any leftover unplaced tiles nearby
-  const placedIds = new Set(arranged.map((t) => t.id));
-  tiles.forEach((t) => {
-    if (!placedIds.has(t.id)) {
-      arranged.push(t);
-    }
-  });
 
   return arranged;
 };

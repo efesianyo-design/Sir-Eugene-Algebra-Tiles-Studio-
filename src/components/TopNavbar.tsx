@@ -11,9 +11,6 @@ import {
   Redo2,
   HelpCircle,
   Trophy,
-  Download,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
   Edit3,
   CheckCircle2,
@@ -21,10 +18,10 @@ import {
   Check,
   PanelRightOpen,
   PanelRightClose,
+  ShieldCheck,
 } from 'lucide-react';
 import { setSoundEnabled, getSoundEnabled, playSound } from '../utils/audio';
 import { MathView } from './MathView';
-import { ExpressionBreakdown } from '../types';
 
 interface TopNavbarProps {
   mode: WorkspaceMode;
@@ -39,6 +36,11 @@ interface TopNavbarProps {
   onOpenChallenges: () => void;
   onOpenHelp: () => void;
   onExportPNG: () => void;
+  onOpenProfile: () => void;
+  onOpenAdmin: () => void;
+  studentName?: string;
+  studentAvatar?: string;
+  studentLevel?: string;
   // Compact Live Math Summary
   mathSummary: {
     latex: string;
@@ -67,6 +69,11 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onOpenChallenges,
   onOpenHelp,
   onExportPNG,
+  onOpenProfile,
+  onOpenAdmin,
+  studentName,
+  studentAvatar,
+  studentLevel,
   mathSummary,
   isInspectorOpen,
   onToggleInspector,
@@ -94,232 +101,193 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   return (
     <header
       id="top-navbar"
-      className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-2 sm:px-3 md:px-4 z-40 flex-shrink-0 select-none shadow-sm gap-2 sm:gap-3 w-full overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap"
+      className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-4 z-40 flex-shrink-0 select-none shadow-sm gap-2 sm:gap-3 w-full"
     >
-      {/* Brand & Single Mode Selector */}
+      {/* Left: Brand & Mode Switcher */}
       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-600 flex items-center justify-center shadow-md flex-shrink-0 ring-1 ring-white/10">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-600 flex items-center justify-center shadow-md ring-1 ring-white/10">
             <Layers className="w-4 h-4 text-white" />
           </div>
-          <div className="flex flex-col justify-center flex-shrink-0">
-            <h1 className="font-black text-xs sm:text-sm tracking-tight text-slate-100 leading-tight whitespace-nowrap">
+          <div className="flex flex-col justify-center">
+            <h1 className="font-black text-xs sm:text-sm tracking-tight text-slate-100 leading-tight">
               Algebra Tiles <span className="text-cyan-400 font-extrabold">Studio</span>
             </h1>
-            <span className="text-[10px] text-slate-400 font-medium tracking-tight leading-none whitespace-nowrap">
+            <span className="text-[10px] text-slate-400 font-medium leading-none">
               Sir Eugene Technologies
             </span>
           </div>
         </div>
 
-        {/* 1. Consolidated Single Top Navigation Mode Selector: [ ⚖️ Equation Mat ] | [ 🔲 Factoring Grid ] | [ ✏️ Free Explore ] */}
+        {/* Mode Tabs (No gap artifacts) */}
         <nav
           id="primary-mode-nav-tabs"
           aria-label="Workspace Modes"
-          className="flex items-center bg-slate-950 p-0.5 sm:p-1 rounded-xl border border-slate-800 gap-0.5 sm:gap-1 shadow-inner flex-shrink-0"
+          className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1 shadow-inner"
         >
-          {/* Equation Mat */}
           <button
             id="nav-mode-equation-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
-              mode === 'equation'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
-            }`}
             onClick={() => {
               playSound('click');
               onSetMode('equation');
             }}
-            title="Solve linear equations step-by-step with balanced left & right mats"
+            className={`min-h-[34px] flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              mode === 'equation'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
           >
-            <Scale className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-            <span className="hidden sm:inline">Equation Mat</span>
-            <span className="sm:hidden">Equation</span>
+            <Scale className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Equation Mat</span>
           </button>
 
-          {/* Factoring Grid */}
           <button
             id="nav-mode-factor-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
-              mode === 'factor'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
-            }`}
             onClick={() => {
               playSound('click');
               onSetMode('factor');
             }}
-            title="Factoring & Area multiplication grid"
+            className={`min-h-[34px] flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              mode === 'factor'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
           >
-            <Grid className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-            <span className="hidden sm:inline">Factoring Grid</span>
-            <span className="sm:hidden">Factoring</span>
+            <Grid className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Factoring Grid</span>
           </button>
 
-          {/* Free Explore */}
           <button
             id="nav-mode-freeform-btn"
             type="button"
-            className={`min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
-              mode === 'freeform'
-                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
-            }`}
             onClick={() => {
               playSound('click');
               onSetMode('freeform');
             }}
-            title="Freeform expressions & simplifying like terms"
+            className={`min-h-[34px] flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              mode === 'freeform'
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
           >
-            <Edit3 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-            <span className="hidden sm:inline">Free Explore</span>
-            <span className="sm:hidden">Explore</span>
+            <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Free Explore</span>
           </button>
         </nav>
       </div>
 
-      {/* 2. Embedded Compact Live Math Readout (Eliminates floating white card on canvas) */}
+      {/* Center: Live Math Summary */}
       <div
-        id="topbar-live-math-badge"
+        id="nav-live-math-summary"
         onClick={handleCopyMath}
-        className="hidden md:flex items-center gap-2 bg-slate-950/90 border border-slate-800 hover:border-cyan-500/40 px-3 py-1 rounded-xl shadow-inner cursor-pointer transition-all max-w-[200px] lg:max-w-xs xl:max-w-md truncate flex-shrink-0"
-        title="Click to copy LaTeX expression"
+        className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-950/80 border border-slate-800 hover:border-cyan-500/50 rounded-xl cursor-pointer shadow-inner max-w-sm truncate"
       >
-        <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 hidden md:inline">
+        <span className="text-[10px] font-black uppercase text-slate-400">
           {mathSummary.label}:
         </span>
         <div className="text-xs sm:text-sm font-bold text-cyan-300 truncate font-mono">
           <MathView latex={mathSummary.latex || '0'} />
         </div>
-        {mathSummary.isBalanced && (
-          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded font-bold hidden sm:inline-flex items-center gap-0.5">
-            <CheckCircle2 className="w-2.5 h-2.5" /> Balanced
-          </span>
-        )}
-        {mathSummary.isValidProduct && (
-          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded font-bold hidden sm:inline-flex items-center gap-0.5">
-            <CheckCircle2 className="w-2.5 h-2.5" /> Valid
-          </span>
-        )}
-        <span className="text-slate-500 hover:text-slate-300 ml-auto hidden sm:inline">
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-        </span>
       </div>
 
-      {/* Right Controls: Question Toggle, Undo/Redo, Snap/Grid/Sound, Challenges, Help */}
-      <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-        {/* Toggle Question Input Bar (Collapse to maximize canvas) */}
+      {/* Right: Controls & Student Profile */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          id="nav-student-profile-btn"
+          type="button"
+          onClick={() => {
+            playSound('click');
+            onOpenProfile();
+          }}
+          className="min-h-[34px] flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+        >
+          <span className="text-sm">{studentAvatar || '🧠'}</span>
+          <span className="max-w-[90px] truncate">{studentName || 'Student'}</span>
+        </button>
+
+        <button
+          id="nav-admin-portal-btn"
+          type="button"
+          onClick={() => {
+            playSound('click');
+            onOpenAdmin();
+          }}
+          className="min-h-[34px] flex items-center gap-1 px-2.5 py-1 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold cursor-pointer"
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+          <span>Admin</span>
+        </button>
+
         <button
           id="nav-toggle-question-bar-btn"
           type="button"
           onClick={onToggleQuestionBar}
-          className={`min-h-[36px] flex items-center gap-1 px-2 sm:px-2.5 rounded-lg border text-xs font-bold transition-all ${
+          className={`min-h-[34px] flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer ${
             isQuestionBarOpen
               ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300'
-              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white'
+              : 'bg-slate-800 border-slate-700 text-slate-300'
           }`}
-          title={isQuestionBarOpen ? 'Hide Question Input Bar' : 'Show Question Input Bar'}
         >
           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="hidden xl:inline">Problem</span>
-          {isQuestionBarOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
 
         {/* Undo / Redo */}
         <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
           <button
-            id="nav-undo-btn"
-            type="button"
-            title="Undo (Ctrl+Z)"
-            disabled={!canUndo}
-            className={`min-h-[32px] min-w-[32px] p-1.5 rounded transition-colors flex items-center justify-center ${
-              canUndo ? 'text-slate-300 hover:bg-slate-800 hover:text-white active:scale-95' : 'text-slate-600 cursor-not-allowed'
-            }`}
             onClick={onUndo}
+            disabled={!canUndo}
+            className="p-1 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800"
+            title="Undo"
           >
             <Undo2 className="w-3.5 h-3.5" />
           </button>
           <button
-            id="nav-redo-btn"
-            type="button"
-            title="Redo (Ctrl+Y)"
-            disabled={!canRedo}
-            className={`min-h-[32px] min-w-[32px] p-1.5 rounded transition-colors flex items-center justify-center ${
-              canRedo ? 'text-slate-300 hover:bg-slate-800 hover:text-white active:scale-95' : 'text-slate-600 cursor-not-allowed'
-            }`}
             onClick={onRedo}
+            disabled={!canRedo}
+            className="p-1 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800"
+            title="Redo"
           >
             <Redo2 className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Snapping Toggle */}
+        {/* Puzzles Modal */}
         <button
-          id="nav-toggle-snap-btn"
-          type="button"
-          title={`Snap to Grid: ${gridConfig.snapToGrid ? 'ON' : 'OFF'}`}
-          className={`min-h-[34px] min-w-[34px] p-1.5 rounded-lg border transition-colors flex items-center justify-center active:scale-95 ${
-            gridConfig.snapToGrid
-              ? 'bg-cyan-950/70 border-cyan-500/60 text-cyan-300'
-              : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
-          }`}
-          onClick={onToggleSnap}
-        >
-          <Magnet className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Practice Puzzles CTA */}
-        <button
-          id="nav-challenges-modal-btn"
-          type="button"
-          className="min-h-[34px] flex items-center gap-1 px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition-all shadow-sm"
           onClick={() => {
             playSound('click');
             onOpenChallenges();
           }}
-          title="Practice challenges & guided algebra puzzles"
+          className="min-h-[34px] flex items-center gap-1 px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold"
         >
           <Trophy className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden sm:inline">Puzzles</span>
+          <span className="hidden md:inline">Puzzles</span>
         </button>
 
-        {/* Toggle Right Inspector Drawer (Desktop) */}
+        {/* Inspector Toggle */}
         <button
-          id="nav-toggle-inspector-btn"
-          type="button"
-          title={isInspectorOpen ? 'Collapse Math Inspector' : 'Expand Math Inspector'}
-          className={`hidden md:flex min-h-[34px] min-w-[34px] p-1.5 rounded-lg border transition-colors items-center justify-center active:scale-95 ${
+          onClick={onToggleInspector}
+          className={`min-h-[34px] p-1.5 rounded-lg border text-xs font-bold ${
             isInspectorOpen
-              ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300'
+              ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-200'
               : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
           }`}
-          onClick={onToggleInspector}
+          title="Inspect"
         >
           {isInspectorOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
         </button>
 
-        {/* Sound Toggle */}
+        {/* Help Modal */}
         <button
-          id="nav-toggle-sound-btn"
-          type="button"
-          title={`Sound Effects: ${soundOn ? 'ON' : 'MUTED'}`}
-          className="min-h-[34px] min-w-[34px] p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center active:scale-95"
-          onClick={toggleSound}
+          onClick={() => {
+            playSound('click');
+            onOpenHelp();
+          }}
+          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+          title="Help"
         >
-          {soundOn ? <Volume2 className="w-3.5 h-3.5 text-slate-300" /> : <VolumeX className="w-3.5 h-3.5 text-slate-600" />}
-        </button>
-
-        {/* Help Guide */}
-        <button
-          id="nav-help-guide-btn"
-          type="button"
-          title="How to Use & Algebra Tiles Guide"
-          className="min-h-[34px] min-w-[34px] p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-cyan-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors flex items-center justify-center active:scale-95"
-          onClick={onOpenHelp}
-        >
-          <HelpCircle className="w-3.5 h-3.5" />
+          <HelpCircle className="w-4 h-4" />
         </button>
       </div>
     </header>

@@ -121,7 +121,7 @@ export const getSocraticAdvice = (
 
   // 2. FACTORING / AREA MODEL ADVICE
   if (mode === 'factor') {
-    const factorModel = computeFactoringModel(tiles);
+    const factorModel = computeFactoringModel(tiles, undefined, undefined, undefined, customTarget?.rawString);
 
     if (tiles.length === 0) {
       return {
@@ -138,6 +138,29 @@ export const getSocraticAdvice = (
         hint: `The area rectangle is completely filled! The width (${factorModel.topLatex}) multiplied by height (${factorModel.leftLatex}) equals the total area.`,
         status: 'factoring_complete',
         celebration: true,
+      };
+    }
+
+    const hasTop = factorModel.topCount > 0;
+    const hasLeft = factorModel.leftCount > 0;
+    const hasProduct = factorModel.productCount > 0;
+    const solidRect = factorModel.solidRectangle;
+
+    if (hasProduct && solidRect.isSolidRectangle && (!hasTop || !hasLeft)) {
+      return {
+        headline: 'Product Rectangle Formed!',
+        hint: `The product area rectangle (${solidRect.productBreakdown.simplifiedLatex}) is complete. Now place factor tiles along the Top and Left tracks to complete the binomial factors.`,
+        actionSuggestion: 'Place factor tiles along Top and Left tracks',
+        status: 'factoring_in_progress',
+      };
+    }
+
+    if (hasTop && hasLeft && hasProduct && (!solidRect.isSolidRectangle || !factorModel.isValidFactorization)) {
+      return {
+        headline: 'Align Factors with Product Area',
+        hint: 'Check your top and left factor tracks — their lengths must match the width and height of the product area rectangle with no gaps or overlaps.',
+        actionSuggestion: 'Adjust factor tracks or product tile alignment',
+        status: 'factoring_in_progress',
       };
     }
 

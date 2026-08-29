@@ -1,6 +1,6 @@
 {
   "name": "Algebra Tiles Studio",
-  "description": "Interactive virtual algebra tiles manipulative workspace with touch & gesture controls, equation balance mat, factor track area models, and offline PWA capability.",
+  "description": "Interactive virtual algebra tiles manipulative workspace with touch & gesture controls, equation balance mat, factor track area models, student profiles, and offline PWA capability.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

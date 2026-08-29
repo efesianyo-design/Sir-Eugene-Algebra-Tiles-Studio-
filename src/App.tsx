@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate, Challenge } from './types';
+import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate, Challenge, StudentProfile } from './types';
 import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions, BUILT_IN_CHALLENGES } from './utils/constants';
 import { organizeTilesInStandardOrder, findZeroPairs, computeExpressionBreakdown } from './utils/mathEngine';
 import { playSound } from './utils/audio';
+import { getStudentProfile, logStudentActivity } from './utils/studentLogs';
 import confetti from 'canvas-confetti';
 
 import {
@@ -26,34 +27,74 @@ import { ExpressionInspector } from './components/ExpressionInspector';
 import { PracticeChallenges } from './components/PracticeChallenges';
 import { HelpGuideModal } from './components/HelpGuideModal';
 import { ActiveChallengeHUD } from './components/ActiveChallengeHUD';
+import { StudentProfileModal } from './components/StudentProfileModal';
+import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { CelebrationToast } from './components/CelebrationToast';
+
+interface ModeWorkspaceData {
+  tiles: TileData[];
+  history: TileData[][];
+  historyIndex: number;
+  activeTargetQuestion: string | null;
+  equationSteps?: EquationStep[];
+  factoringAnalysis?: FactoringAnalysis | null;
+}
+
+const getDefaultWorkspace = (targetMode: WorkspaceMode): ModeWorkspaceData => {
+  if (targetMode === 'equation') {
+    const eq = '2x + 3 = 7';
+    const parsed = parseEquationString(eq);
+    const generated = generateTilesFromEquation(parsed, 800, 100);
+    const leftBreakdown = computeExpressionBreakdown(generated.filter((t) => t.zone === 'left'));
+    const rightBreakdown = computeExpressionBreakdown(generated.filter((t) => t.zone === 'right'));
+    return {
+      tiles: generated,
+      history: [generated],
+      historyIndex: 0,
+      activeTargetQuestion: eq,
+      equationSteps: [
+        {
+          description: `Loaded: ${eq}`,
+          leftLatex: leftBreakdown.simplifiedLatex || '0',
+          rightLatex: rightBreakdown.simplifiedLatex || '0',
+        },
+      ],
+      factoringAnalysis: null,
+    };
+  }
+
+  if (targetMode === 'factor') {
+    const factEq = 'x^2 + 5x + 6';
+    const { tiles: factorTiles, analysis } = generateTilesForFactoring(factEq, 220, 220);
+    return {
+      tiles: factorTiles,
+      history: [factorTiles],
+      historyIndex: 0,
+      activeTargetQuestion: factEq,
+      equationSteps: [],
+      factoringAnalysis: analysis,
+    };
+  }
+
+  // Freeform explore
+  const simpTiles: TileData[] = [
+    { id: 't-init-1', kind: 'x2', sign: 1, x: 100, y: 100, rotation: 0, zone: 'main' },
+    { id: 't-init-2', kind: 'x', sign: 1, x: 260, y: 100, rotation: 90, zone: 'main' },
+    { id: 't-init-3', kind: 'x', sign: 1, x: 100, y: 260, rotation: 0, zone: 'main' },
+    { id: 't-init-4', kind: 'unit', sign: 1, x: 260, y: 260, rotation: 0, zone: 'main' },
+  ];
+  return {
+    tiles: simpTiles,
+    history: [simpTiles],
+    historyIndex: 0,
+    activeTargetQuestion: '3x + 4 - 2x + 1',
+    equationSteps: [],
+    factoringAnalysis: null,
+  };
+};
 
 export default function App() {
-  const STORAGE_KEY = 'algebra_tiles_workspace_v4';
-
-  // Initial state
-  const [tiles, setTiles] = useState<TileData[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.tiles) && parsed.tiles.length >= 0) {
-          return parsed.tiles;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not load saved workspace from localStorage', e);
-    }
-    return [
-      { id: 't-init-1', kind: 'x2', sign: 1, x: 100, y: 100, rotation: 0, zone: 'main' },
-      { id: 't-init-2', kind: 'x', sign: 1, x: 260, y: 100, rotation: 90, zone: 'main' },
-      { id: 't-init-3', kind: 'x', sign: 1, x: 100, y: 260, rotation: 0, zone: 'main' },
-      { id: 't-init-4', kind: 'unit', sign: 1, x: 260, y: 260, rotation: 0, zone: 'main' },
-    ];
-  });
-
-  // Undo / Redo history stack
-  const [history, setHistory] = useState<TileData[][]>([tiles]);
-  const [historyIndex, setHistoryIndex] = useState(0);
+  const STORAGE_KEY = 'algebra_tiles_workspace_v5';
 
   // Workspace Mode
   const [mode, setMode] = useState<WorkspaceMode>(() => {
@@ -69,22 +110,64 @@ export default function App() {
     return 'equation';
   });
 
+  // Isolated workspace states per mode (Equation Mat vs. Factoring Grid vs. Free Explore)
+  const [modeWorkspaces, setModeWorkspaces] = useState<Record<string, ModeWorkspaceData>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.modeWorkspaces && typeof parsed.modeWorkspaces === 'object') {
+          return parsed.modeWorkspaces;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load saved modeWorkspaces from localStorage', e);
+    }
+    return {
+      equation: getDefaultWorkspace('equation'),
+      factor: getDefaultWorkspace('factor'),
+      freeform: getDefaultWorkspace('freeform'),
+    };
+  });
+
+  // Initial active mode workspace
+  const initialWorkspace = modeWorkspaces[mode] || getDefaultWorkspace(mode);
+
+  const [tiles, setTiles] = useState<TileData[]>(initialWorkspace.tiles);
+  const [history, setHistory] = useState<TileData[][]>(
+    initialWorkspace.history?.length > 0 ? initialWorkspace.history : [initialWorkspace.tiles]
+  );
+  const [historyIndex, setHistoryIndex] = useState<number>(initialWorkspace.historyIndex || 0);
+  const [activeTargetQuestion, setActiveTargetQuestion] = useState<string | null>(
+    initialWorkspace.activeTargetQuestion || (mode === 'equation' ? '2x + 3 = 7' : mode === 'factor' ? 'x^2 + 5x + 6' : '3x + 4 - 2x + 1')
+  );
+  const [activeFactoringAnalysis, setActiveFactoringAnalysis] = useState<FactoringAnalysis | null>(
+    initialWorkspace.factoringAnalysis || null
+  );
+  const [equationSteps, setEquationSteps] = useState<EquationStep[]>(
+    initialWorkspace.equationSteps?.length ? initialWorkspace.equationSteps : [
+      {
+        description: 'Original: 2x + 3 = 7',
+        leftLatex: '2x + 3',
+        rightLatex: '7',
+      },
+    ]
+  );
+
   // UI state: Collapsible Question Bar & Inspector Drawer
   const [isQuestionBarOpen, setIsQuestionBarOpen] = useState(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
-  // Custom Target Question state
-  const [activeTargetQuestion, setActiveTargetQuestion] = useState<string | null>('2x + 3 = 7');
-  const [activeFactoringAnalysis, setActiveFactoringAnalysis] = useState<FactoringAnalysis | null>(null);
+  // Student Profile & Admin Portal state
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => getStudentProfile());
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
-  // Equation Steps Log
-  const [equationSteps, setEquationSteps] = useState<EquationStep[]>([
-    {
-      description: 'Original: 2x + 3 = 7',
-      leftLatex: '2x + 3',
-      rightLatex: '7',
-    },
-  ]);
+  // Celebration Toast state
+  const [celebrationToast, setCelebrationToast] = useState<{
+    equation: string;
+    message?: string;
+  } | null>(null);
 
   // Grid Configuration
   const [gridConfig, setGridConfig] = useState<GridConfig>({
@@ -103,25 +186,75 @@ export default function App() {
   const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
 
-  // Auto-save canvas state to localStorage
+  // Auto-save canvas state and modeWorkspaces to localStorage
   useEffect(() => {
     try {
-      const dataToSave = {
+      const currentSnapshot: ModeWorkspaceData = {
         tiles,
+        history,
+        historyIndex,
+        activeTargetQuestion,
+        equationSteps,
+        factoringAnalysis: activeFactoringAnalysis,
+      };
+      const dataToSave = {
         mode,
+        tiles,
+        activeTargetQuestion,
+        modeWorkspaces: {
+          ...modeWorkspaces,
+          [mode]: currentSnapshot,
+        },
         gridConfig: {
           snapToGrid: gridConfig.snapToGrid,
           showGrid: gridConfig.showGrid,
         },
         autoCancelZeroPairs,
-        activeTargetQuestion,
         savedAt: Date.now(),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     } catch (err) {
       console.warn('Auto-save to localStorage failed', err);
     }
-  }, [tiles, mode, gridConfig.snapToGrid, gridConfig.showGrid, autoCancelZeroPairs, activeTargetQuestion]);
+  }, [tiles, history, historyIndex, mode, activeTargetQuestion, equationSteps, activeFactoringAnalysis, modeWorkspaces, gridConfig.snapToGrid, gridConfig.showGrid, autoCancelZeroPairs]);
+
+  // Seamless Mode Switcher with Workspace Isolation
+  const handleSetMode = useCallback((newMode: WorkspaceMode) => {
+    if (newMode === mode) return;
+    playSound('click');
+
+    // 1. Snapshot current mode's active state
+    const currentSnapshot: ModeWorkspaceData = {
+      tiles,
+      history,
+      historyIndex,
+      activeTargetQuestion,
+      equationSteps,
+      factoringAnalysis: activeFactoringAnalysis,
+    };
+
+    const updatedWorkspaces = {
+      ...modeWorkspaces,
+      [mode]: currentSnapshot,
+    };
+    setModeWorkspaces(updatedWorkspaces);
+
+    // 2. Retrieve target mode's workspace
+    const targetWorkspace = updatedWorkspaces[newMode] || getDefaultWorkspace(newMode);
+
+    // 3. Set the active state to the target mode's workspace
+    setTiles(targetWorkspace.tiles);
+    setHistory(targetWorkspace.history && targetWorkspace.history.length > 0 ? targetWorkspace.history : [targetWorkspace.tiles]);
+    setHistoryIndex(typeof targetWorkspace.historyIndex === 'number' ? targetWorkspace.historyIndex : 0);
+    setActiveTargetQuestion(targetWorkspace.activeTargetQuestion ?? null);
+    if (targetWorkspace.equationSteps) {
+      setEquationSteps(targetWorkspace.equationSteps);
+    }
+    setActiveFactoringAnalysis(targetWorkspace.factoringAnalysis ?? null);
+
+    // 4. Update the active mode
+    setMode(newMode);
+  }, [mode, tiles, history, historyIndex, activeTargetQuestion, equationSteps, activeFactoringAnalysis, modeWorkspaces]);
 
   // Save history state on changes
   const recordHistory = useCallback(
@@ -295,6 +428,13 @@ export default function App() {
         spread: 60,
         origin: { y: 0.6 },
       });
+
+      logStudentActivity({
+        activityType: 'equation_solved',
+        question: activeTargetQuestion || 'Linear Equation',
+        result: `x = ${unitPerRow}`,
+        status: 'success',
+      });
     }
 
     setEquationSteps((prev) => [
@@ -326,6 +466,13 @@ export default function App() {
         particleCount: 60,
         spread: 70,
         origin: { y: 0.6 },
+      });
+
+      logStudentActivity({
+        activityType: 'factoring_completed',
+        question: activeTargetQuestion || 'Factoring Trinomial',
+        result: `(${activeFactoringAnalysis.factor1.unit})(${activeFactoringAnalysis.factor2.unit})`,
+        status: 'success',
       });
     }
   };
@@ -382,6 +529,13 @@ export default function App() {
     const updated = tiles.filter((t) => !idsToRemove.has(t.id));
     setTiles(updated);
     recordHistory(updated);
+
+    logStudentActivity({
+      activityType: 'zero_pairs_cancelled',
+      question: `${pairs.length} zero pair(s) cancelled`,
+      result: computeExpressionBreakdown(updated).simplifiedLatex,
+      status: 'success',
+    });
 
     if (mode === 'equation') {
       const leftTiles = updated.filter((t) => t.zone === 'left' || t.x < 400);
@@ -449,11 +603,11 @@ export default function App() {
     if (currentIndex >= 0 && currentIndex < BUILT_IN_CHALLENGES.length - 1) {
       const nextChallenge = BUILT_IN_CHALLENGES[currentIndex + 1];
       if (nextChallenge.category === 'equations') {
-        setMode('equation');
+        handleSetMode('equation');
       } else if (nextChallenge.category === 'multiplication' || nextChallenge.category === 'factoring') {
-        setMode('factor');
+        handleSetMode('factor');
       } else {
-        setMode('freeform');
+        handleSetMode('freeform');
       }
       handleSelectChallenge(nextChallenge);
     } else {
@@ -483,7 +637,13 @@ export default function App() {
   const leftBreakdown = computeExpressionBreakdown(leftSideTiles);
   const rightBreakdown = computeExpressionBreakdown(rightSideTiles);
   const totalBreakdown = computeExpressionBreakdown(tiles);
-  const factoringAnalysisResult = computeFactoringModel(tiles);
+  const factoringAnalysisResult = computeFactoringModel(
+    tiles,
+    gridConfig.unitSize,
+    gridConfig.xSize,
+    gridConfig.ySize,
+    activeTargetQuestion
+  );
 
   let mathSummary = {
     latex: totalBreakdown.simplifiedLatex || '0',
@@ -511,6 +671,58 @@ export default function App() {
       isValidProduct: factoringAnalysisResult.isValidFactorization,
     };
   }
+
+  // Factoring Validation Celebration Trigger
+  const prevFactoringValidRef = useRef(false);
+  const lastFactoredEquationRef = useRef<string>('');
+
+  useEffect(() => {
+    if (mode === 'factor') {
+      const isValid = factoringAnalysisResult.isValidFactorization;
+      const currentEq = factoringAnalysisResult.fullEquationLatex;
+
+      if (isValid && (!prevFactoringValidRef.current || lastFactoredEquationRef.current !== currentEq)) {
+        prevFactoringValidRef.current = true;
+        lastFactoredEquationRef.current = currentEq;
+
+        // 1. Particle Confetti Burst
+        confetti({
+          particleCount: 90,
+          spread: 80,
+          origin: { y: 0.35 },
+          colors: ['#10b981', '#06b6d4', '#f59e0b', '#3b82f6', '#ec4899'],
+        });
+
+        // 2. Play success sound chime
+        playSound('success');
+
+        // 3. Display glowing celebration toast
+        setCelebrationToast({
+          equation: currentEq || '(x + 3)(x + 2) = x^2 + 5x + 6',
+          message: 'Excellent! Factored Correctly:',
+        });
+
+        // 4. Record to student learning log
+        logStudentActivity({
+          activityType: 'factoring_completed',
+          question: activeTargetQuestion || 'Factoring Trinomial Area',
+          result: currentEq,
+          status: 'success',
+        });
+      } else if (!isValid) {
+        prevFactoringValidRef.current = false;
+      }
+    } else {
+      prevFactoringValidRef.current = false;
+    }
+  }, [mode, factoringAnalysisResult.isValidFactorization, factoringAnalysisResult.fullEquationLatex, activeTargetQuestion]);
+
+  const handleSignOut = () => {
+    localStorage.removeItem('algebra_student_profile_v1');
+    setStudentProfile(null);
+    setShowProfileModal(true);
+    playSound('click');
+  };
 
   // Export workspace as image
   const handleExportPNG = () => {
@@ -557,13 +769,11 @@ export default function App() {
   };
 
   return (
-    <div
-      className="flex flex-col h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none touch-none relative"
-    >
+    <div className="flex flex-col h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none touch-none relative">
       {/* 1. Consolidated Clean Top Header with Mode Selector & Live Math Badge */}
       <TopNavbar
         mode={mode}
-        onSetMode={setMode}
+        onSetMode={handleSetMode}
         gridConfig={gridConfig}
         onToggleGrid={() => setGridConfig((prev) => ({ ...prev, showGrid: !prev.showGrid }))}
         onToggleSnap={() => setGridConfig((prev) => ({ ...prev, snapToGrid: !prev.snapToGrid }))}
@@ -574,6 +784,11 @@ export default function App() {
         onOpenChallenges={() => setShowChallengesModal(true)}
         onOpenHelp={() => setShowHelpModal(true)}
         onExportPNG={handleExportPNG}
+        onOpenProfile={() => setShowProfileModal(true)}
+        onOpenAdmin={() => setShowAdminModal(true)}
+        studentName={studentProfile?.name}
+        studentAvatar={studentProfile?.avatarSeed}
+        studentLevel={studentProfile?.level || studentProfile?.grade}
         mathSummary={mathSummary}
         isInspectorOpen={isInspectorOpen}
         onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
@@ -590,6 +805,7 @@ export default function App() {
         onClearActiveQuestion={() => setActiveTargetQuestion(null)}
         isOpen={isQuestionBarOpen}
         onClose={() => setIsQuestionBarOpen(false)}
+        studentGrade={studentProfile?.grade}
       />
 
       {/* 3. Maximized Canvas Viewport (> 75% screen height) */}
@@ -660,6 +876,7 @@ export default function App() {
             autoCancelZeroPairs={autoCancelZeroPairs}
             onToggleAutoCancel={() => setAutoCancelZeroPairs(!autoCancelZeroPairs)}
             onCancelAllZeroPairs={handleCancelAllZeroPairs}
+            onCancelZeroPair={handleCancelZeroPair}
             onOrganizeStandardOrder={handleOrganizeStandardOrder}
             onClearCanvas={handleClearCanvas}
           />
@@ -677,7 +894,7 @@ export default function App() {
         }
       />
 
-      {/* 5. Streamlined Slim Bottom Tile Toolbox Strip ([+x²] [+x] [+1] [-x²] [-x] [-1] [Cancel] [Organize] [Clear]) */}
+      {/* 5. Streamlined Slim Bottom Tile Toolbox Strip */}
       <SlimTileToolbox
         onSpawnTile={handleSpawnTile}
         onClearCanvas={handleClearCanvas}
@@ -685,6 +902,15 @@ export default function App() {
         onOrganizeStandardOrder={handleOrganizeStandardOrder}
         zeroPairCount={zeroPairs.length}
       />
+
+      {/* Floating Glowing Celebration Toast on Factoring Validation */}
+      {celebrationToast && (
+        <CelebrationToast
+          equationLatex={celebrationToast.equation}
+          message={celebrationToast.message}
+          onClose={() => setCelebrationToast(null)}
+        />
+      )}
 
       {/* Guided Challenges Modal */}
       {showChallengesModal && (
@@ -699,6 +925,31 @@ export default function App() {
 
       {/* Help Guide Modal */}
       {showHelpModal && <HelpGuideModal onClose={() => setShowHelpModal(false)} />}
+
+      {/* Student Entry Gate & Profile Modal (Mandatory on initial load) */}
+      {(!studentProfile || showProfileModal) && (
+        <StudentProfileModal
+          isOpen={!studentProfile || showProfileModal}
+          isMandatoryGate={!studentProfile}
+          onClose={() => setShowProfileModal(false)}
+          onProfileSaved={(profile) => {
+            setStudentProfile(profile);
+            setShowProfileModal(false);
+          }}
+          onOpenAdminPortal={() => {
+            setShowAdminModal(true);
+          }}
+          onSignOut={handleSignOut}
+        />
+      )}
+
+      {/* Super Admin Dashboard Modal (PIN-Protected: 1234) */}
+      {showAdminModal && (
+        <AdminDashboardModal
+          isOpen={showAdminModal}
+          onClose={() => setShowAdminModal(false)}
+        />
+      )}
     </div>
   );
 }

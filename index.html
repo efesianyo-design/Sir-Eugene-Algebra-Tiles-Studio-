@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Algebra Tiles Studio</title>
     <meta name="description" content="Interactive virtual algebra tiles manipulative workspace with touch & gesture handling, factor tracks, equation balance mats, and offline PWA capability." />
+    
+    <!-- Prevent stale caching of the document so refreshes immediately load updates -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -25,7 +31,10 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => {
+          navigator.serviceWorker.register('/sw.js').then((registration) => {
+            // Check for service worker updates immediately on every page refresh
+            registration.update();
+          }).catch((err) => {
             console.log('ServiceWorker registration ignored/failed:', err);
           });
         });
@@ -33,4 +42,3 @@
     </script>
   </body>
 </html>
-

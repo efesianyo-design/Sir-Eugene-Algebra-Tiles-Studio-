@@ -30,16 +30,14 @@ export const SocraticCoachBar: React.FC<SocraticCoachBarProps> = ({
 
   const advice: SocraticAdvice = getSocraticAdvice(tiles, mode, customTarget);
 
-  const handleAskGemini = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    playSound('click');
+  const requestSocraticHint = async () => {
     setIsAiLoading(true);
     setDeepAiHint(null);
     setIsExpanded(true);
 
     try {
       const boardSummary = `Mode: ${mode}. Tiles: ${tiles.length} total. Board advice: ${advice.headline}. Target: ${customTarget?.rawString || 'None'}`;
-      
+
       const response = await fetch('/api/socratic-hint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,10 +63,16 @@ export const SocraticCoachBar: React.FC<SocraticCoachBarProps> = ({
 
     setTimeout(() => {
       setDeepAiHint(
-        `💡 Guiding thought: What algebraic operation maintains balance when done identically to both sides?`
+        `💡 Guiding thought: What algebraic operation maintains balance or rectangular area when applied step by step?`
       );
       setIsAiLoading(false);
     }, 400);
+  };
+
+  const handleAskGemini = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    playSound('click');
+    requestSocraticHint();
   };
 
   return (
@@ -99,11 +103,12 @@ export const SocraticCoachBar: React.FC<SocraticCoachBarProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Ask Coach Button */}
           <button
             type="button"
             onClick={handleAskGemini}
             disabled={isAiLoading}
-            className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-600/40 rounded transition-all active:scale-95 shadow-xs"
+            className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-600/40 rounded transition-all active:scale-95 shadow-xs cursor-pointer"
             title="Ask AI for deeper Socratic question"
           >
             {isAiLoading ? (

@@ -22,7 +22,9 @@ const getAudioContext = (): AudioContext | null => {
   return audioCtx;
 };
 
-export const playSound = (type: 'pickup' | 'drop' | 'flip' | 'snap' | 'zeropair' | 'clear' | 'success' | 'click') => {
+export const playSound = (
+  type: 'pickup' | 'drop' | 'flip' | 'snap' | 'zeropair' | 'clear' | 'success' | 'click' | 'error' | 'pop'
+) => {
   if (!soundEnabled) return;
   try {
     const ctx = getAudioContext();
@@ -35,6 +37,26 @@ export const playSound = (type: 'pickup' | 'drop' | 'flip' | 'snap' | 'zeropair'
     gain.connect(ctx.destination);
 
     switch (type) {
+      case 'error': {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.linearRampToValueAtTime(130, now + 0.12);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.12);
+        break;
+      }
+      case 'pop': {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(750, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+        break;
+      }
       case 'pickup': {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(320, now);

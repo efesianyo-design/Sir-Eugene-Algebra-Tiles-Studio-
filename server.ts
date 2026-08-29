@@ -23,24 +23,29 @@ async function startServer() {
 
   // Health check API
   app.get('/api/health', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json({ status: 'ok', time: Date.now() });
   });
 
   // Socratic AI Hint Route
   app.post('/api/socratic-hint', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     try {
-      const { mode, boardSummary, currentHint, targetQuestion } = req.body;
+      const { mode, boardSummary, currentHint, targetQuestion, studentVoiceQuery } = req.body;
       const ai = getGenAI();
 
       if (!ai) {
         return res.json({
-          hint: `💡 Coach Tip: Focus on maintaining balance or geometry. What does the opposite sign do to cancel unwanted terms?`,
+          hint: studentVoiceQuery
+            ? `💡 Socratic Coach: To answer "${studentVoiceQuery}", think about how algebra tiles represent physical areas or balanced scale weights.`
+            : `💡 Coach Tip: Focus on maintaining balance or geometry. What does the opposite sign do to cancel unwanted terms?`,
         });
       }
 
       const prompt = `You are a supportive, insightful Socratic math coach assisting a middle/high school student working with virtual Algebra Tiles.
 The student is currently in mode: "${mode}".
 Target Question: "${targetQuestion || 'Self-placed custom problem'}".
+${studentVoiceQuery ? `Student's Direct Spoken Question: "${studentVoiceQuery}"` : ''}
 Current Board State: "${boardSummary}".
 System rule guidance: "${currentHint}".
 
@@ -72,8 +77,31 @@ Guide their intuition regarding zero pairs, inverse operations, adding tiles to 
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    
+    // Serve static assets with smart cache headers: no-cache for HTML/SW/manifest, cache-control for hashed assets
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (
+            filePath.endsWith('.html') ||
+            filePath.endsWith('sw.js') ||
+            filePath.endsWith('manifest.json')
+          ) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+          } else if (filePath.includes('/assets/')) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
+
+    // SPA fallback: Always serve fresh index.html with no-cache headers
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

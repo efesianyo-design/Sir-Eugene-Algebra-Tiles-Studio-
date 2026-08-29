@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate } from '../types';
+import { TileData, TileKind, TileSign, WorkspaceMode, GridConfig, ZeroPairCandidate, SolidRectangleResult } from '../types';
 import { TileItem } from './TileItem';
 import { MathView } from './MathView';
 import { BASE_UNIT, X_UNIT, Y_UNIT, getTileDimensions } from '../utils/constants';
 import { playSound } from '../utils/audio';
-import { findZeroPairs, computeExpressionBreakdown, computeFactoringModel } from '../utils/mathEngine';
+import { findZeroPairs, computeExpressionBreakdown, detectSolidRectangle, computeFactoringModel } from '../utils/mathEngine';
+import { logStudentActivity } from '../utils/studentLogs';
 import {
   Maximize2,
   Sparkles,
@@ -24,6 +25,7 @@ import {
   Trash2,
   X,
   Layers,
+  Award,
 } from 'lucide-react';
 
 import confetti from 'canvas-confetti';
@@ -58,12 +60,21 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(new Set());
   const [dissolvingTileIds, setDissolvingTileIds] = useState<Set<string>>(new Set());
   const [zeroPairBurst, setZeroPairBurst] = useState<{ id: string; x: number; y: number; label: string } | null>(null);
-  const [copiedExpr, setCopiedExpr] = useState(false);
 
-  // Canvas pan & zoom transformation
+  // Canvas pan & zoom transformation (0.5x - 2.5x)
   const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, viewX: 0, viewY: 0 });
+
+  // Native Multi-Touch Tracking (2-finger pinch-to-zoom & 2-finger pan)
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialMidpoint: { x: number; y: number };
+    initialScale: number;
+    initialViewX: number;
+    initialViewY: number;
+  } | null>(null);
 
   // Dragging state
   const isDraggingRef = useRef(false);
@@ -79,6 +90,9 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     currentX: number;
     currentY: number;
   } | null>(null);
+
+  // Factoring Celebration tracker
+  const lastCelebratedEquationRef = useRef<string | null>(null);
 
   // Computed zero pairs and expression breakdown
   const zeroPairs = findZeroPairs(tiles);
@@ -102,8 +116,57 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     rightSideTiles.length > 0 &&
     leftBreakdown.simplifiedLatex === rightBreakdown.simplifiedLatex;
 
-  // Factoring Mode area model computation
-  const factoringResult = computeFactoringModel(tiles);
+  // Factoring Model & Solid Bounding Rectangle Detection
+  const factoringModel = computeFactoringModel(
+    tiles,
+    gridConfig.unitSize,
+    gridConfig.xSize,
+    gridConfig.ySize,
+    customTarget?.rawString
+  );
+
+  const solidRectResult: SolidRectangleResult =
+    mode === 'factor' && factoringModel.solidRectangle
+      ? factoringModel.solidRectangle
+      : detectSolidRectangle(
+          tiles,
+          gridConfig.unitSize,
+          gridConfig.xSize,
+          gridConfig.ySize
+        );
+
+  // Automatic Celebration Engine for Freeform Geometric Area Model (delegated to App.tsx for factor mode)
+  useEffect(() => {
+    if (mode !== 'freeform' || !solidRectResult.isSolidRectangle || !solidRectResult.isValidTrinomialFactoring) {
+      return;
+    }
+
+    // Must include all canvas tiles and have at least 3 tiles
+    if (solidRectResult.tilesInRect.length !== tiles.length || tiles.length < 3) {
+      return;
+    }
+
+    const currentKey = `${solidRectResult.fullEquationLatex}`;
+    if (lastCelebratedEquationRef.current !== currentKey) {
+      lastCelebratedEquationRef.current = currentKey;
+
+      // Celebrate with cheerful chime and confetti burst!
+      playSound('success');
+      confetti({
+        particleCount: 75,
+        spread: 80,
+        origin: { y: 0.6 },
+      });
+
+      // Log success in student learning record
+      logStudentActivity({
+        activityType: 'factoring_completed',
+        question: customTarget?.rawString || solidRectResult.productBreakdown.simplifiedLatex,
+        result: `${solidRectResult.factoredLatex} = ${solidRectResult.productBreakdown.simplifiedLatex}`,
+        status: 'success',
+      });
+    }
+  }, [solidRectResult, customTarget, mode, tiles.length]);
 
   // Calculate snap position for a tile coordinate
   const snapCoordinate = useCallback(
@@ -120,8 +183,8 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         snappedY = Math.round(y / u) * u;
       }
 
-      // Magnetic edge-snapping: when dragging a tile near another tile (within 8px), snap bounding edges together
-      const SNAP_THRESHOLD = 8;
+      // Magnetic edge-snapping: when dragging a tile near another tile (within 10px), snap bounding edges together
+      const SNAP_THRESHOLD = 10;
       let bestSnapDeltaX = Infinity;
       let bestSnapCandidateX = snappedX;
 
@@ -231,6 +294,31 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
 
   // Tile Drag Start handler
   const handleTilePointerDown = (e: React.PointerEvent, tileId: string) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // If 2 or more touches active, switch to multi-touch pinch/pan mode
+    if (activePointersRef.current.size >= 2) {
+      isDraggingRef.current = false;
+      dragTileIdRef.current = null;
+      setSelectionBox(null);
+
+      const touches: { x: number; y: number }[] = Array.from(activePointersRef.current.values());
+      const p1 = touches[0];
+      const p2 = touches[1];
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+
+      pinchStateRef.current = {
+        initialDistance: Math.max(10, dist),
+        initialMidpoint: { x: midX, y: midY },
+        initialScale: viewTransform.scale,
+        initialViewX: viewTransform.x,
+        initialViewY: viewTransform.y,
+      };
+      return;
+    }
+
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     activePointerIdRef.current = e.pointerId;
@@ -262,9 +350,34 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     playSound('pickup');
   };
 
-  // Canvas background pointer down (selection box or pan)
+  // Canvas background pointer down (selection box, pan, or multi-touch start)
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
-    // If middle click or space key pressed -> pan
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Multi-touch initialization (2 fingers)
+    if (activePointersRef.current.size === 2) {
+      isDraggingRef.current = false;
+      dragTileIdRef.current = null;
+      setSelectionBox(null);
+
+      const touches: { x: number; y: number }[] = Array.from(activePointersRef.current.values());
+      const p1 = touches[0];
+      const p2 = touches[1];
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+
+      pinchStateRef.current = {
+        initialDistance: Math.max(10, dist),
+        initialMidpoint: { x: midX, y: midY },
+        initialScale: viewTransform.scale,
+        initialViewX: viewTransform.x,
+        initialViewY: viewTransform.y,
+      };
+      return;
+    }
+
+    // Single finger or mouse pan with middle click / Alt key
     if (e.button === 1 || e.altKey) {
       setIsPanning(true);
       panStartRef.current = {
@@ -292,8 +405,45 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  // Pointer Move
+  // Pointer Move (handles 2-finger pinch/pan, single-finger tile drag, marquee box)
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // 1. Two-Finger Pinch-to-Zoom & Pan handling
+    if (activePointersRef.current.size >= 2 && pinchStateRef.current && containerRef.current) {
+      const touches: { x: number; y: number }[] = Array.from(activePointersRef.current.values());
+      const p1 = touches[0];
+      const p2 = touches[1];
+      const currentDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      const currentMidX = (p1.x + p2.x) / 2;
+      const currentMidY = (p1.y + p2.y) / 2;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const scaleRatio = currentDist / pinchStateRef.current.initialDistance;
+      const newScale = Math.max(0.5, Math.min(2.5, pinchStateRef.current.initialScale * scaleRatio));
+
+      // Focal point in canvas coordinates at initial midpoint
+      const focalX =
+        (pinchStateRef.current.initialMidpoint.x - rect.left - pinchStateRef.current.initialViewX) /
+        pinchStateRef.current.initialScale;
+      const focalY =
+        (pinchStateRef.current.initialMidpoint.y - rect.top - pinchStateRef.current.initialViewY) /
+        pinchStateRef.current.initialScale;
+
+      const newViewX = currentMidX - rect.left - focalX * newScale;
+      const newViewY = currentMidY - rect.top - focalY * newScale;
+
+      setViewTransform({
+        x: newViewX,
+        y: newViewY,
+        scale: newScale,
+      });
+      return;
+    }
+
+    // 2. Single-Pointer Mouse/Touch Pan (Middle click / Alt)
     if (isPanning) {
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
@@ -305,12 +455,11 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       return;
     }
 
-    // Marquee selection box update
+    // 3. Marquee selection box update
     if (selectionBox) {
       const canvasPos = screenToCanvas(e.clientX, e.clientY);
       setSelectionBox((prev) => (prev ? { ...prev, currentX: canvasPos.x, currentY: canvasPos.y } : null));
 
-      // Check which tiles intersect with selection box
       const minX = Math.min(selectionBox.startX, canvasPos.x);
       const maxX = Math.max(selectionBox.startX, canvasPos.x);
       const minY = Math.min(selectionBox.startY, canvasPos.y);
@@ -330,7 +479,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       return;
     }
 
-    // Dragging tile(s)
+    // 4. Dragging tile(s) (Single Finger / Left Click)
     if (isDraggingRef.current && dragTileIdRef.current) {
       const canvasPos = screenToCanvas(e.clientX, e.clientY);
       const dx = canvasPos.x - dragStartPosRef.current.x;
@@ -342,32 +491,34 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       const targetTile = tiles.find((t) => t.id === dragTileIdRef.current);
       if (!targetTile) return;
 
-      // Calculate new raw position of lead tile
       const rawX = mainTileInit.x + dx;
       const rawY = mainTileInit.y + dy;
 
-      // Determine snap delta
       const snapped = snapCoordinate(rawX, rawY, targetTile.kind, targetTile.rotation, targetTile.id);
       const effectiveDx = snapped.x - mainTileInit.x;
       const effectiveDy = snapped.y - mainTileInit.y;
 
-      // Update positions of all dragged tiles
       setTiles((prev) =>
         prev.map((t) => {
           const init = initialTilePositionsRef.current.get(t.id);
           if (init) {
             let zone: 'left' | 'right' | 'top_factor' | 'left_factor' | 'product_area' | 'main' = 'main';
 
-            // Assign zones depending on workspace mode and coordinates
             if (mode === 'equation') {
               const canvasMidX = (containerRef.current?.clientWidth || 800) / 2;
               zone = (init.x + effectiveDx) < canvasMidX ? 'left' : 'right';
             } else if (mode === 'factor') {
-              const posX = init.x + effectiveDx;
-              const posY = init.y + effectiveDy;
-              if (posY < 160 && posX >= 160) zone = 'top_factor';
-              else if (posX < 160 && posY >= 160) zone = 'left_factor';
-              else if (posX >= 160 && posY >= 160) zone = 'product_area';
+              const finalX = init.x + effectiveDx;
+              const finalY = init.y + effectiveDy;
+              if (finalY < 160 && finalX >= 160) {
+                zone = 'top_factor';
+              } else if (finalX < 180 && finalY >= 140) {
+                zone = 'left_factor';
+              } else if (finalX >= 180 && finalY >= 160) {
+                zone = 'product_area';
+              } else {
+                zone = 'main';
+              }
             }
 
             return {
@@ -383,8 +534,14 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     }
   };
 
-  // Pointer Up
+  // Pointer Up / Cancel
   const handlePointerUp = (e: React.PointerEvent) => {
+    activePointersRef.current.delete(e.pointerId);
+
+    if (activePointersRef.current.size < 2) {
+      pinchStateRef.current = null;
+    }
+
     if (isPanning) {
       setIsPanning(false);
     }
@@ -401,7 +558,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       playSound('drop');
       onTilesChange(tiles);
 
-      // 1. Core Zero-Pair Cancellation: When dropped directly on an opposite tile with >50% overlap
+      // Core Zero-Pair Cancellation on drop with >50% overlap
       if (droppedTileId) {
         const droppedTile = tiles.find((t) => t.id === droppedTileId);
         if (droppedTile) {
@@ -424,7 +581,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           tiles.forEach((other) => {
             if (other.id === droppedTile.id) return;
             if (other.kind !== droppedTile.kind) return;
-            if (other.sign !== -droppedTile.sign) return; // Opposite signs (e.g. +1 dropped on -1, +x on -x, +x² on -x²)
+            if (other.sign !== -droppedTile.sign) return;
 
             const dim2 = getTileDimensions(
               other.kind,
@@ -438,7 +595,6 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             const w2 = dim2.width;
             const h2 = dim2.height;
 
-            // Calculate intersection bounding box
             const interLeft = Math.max(x1, x2);
             const interRight = Math.min(x1 + w1, x2 + w2);
             const interTop = Math.max(y1, y2);
@@ -462,7 +618,6 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             const partner: TileData = bestPairTile;
             const pairIds = [droppedTile.id, partner.id];
 
-            // Trigger quick dissolve / fade animation on both tiles
             setDissolvingTileIds((prev) => new Set([...prev, ...pairIds]));
             playSound('zeropair');
 
@@ -498,77 +653,82 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
                 return next;
               });
               setZeroPairBurst(null);
-            }, 350);
-
-            return;
+            }, 320);
           }
         }
-      }
-
-      // Auto cancel zero pairs if enabled in settings
-      if (autoCancelZeroPairs) {
-        setTimeout(() => {
-          const pairs = findZeroPairs(tiles);
-          if (pairs.length > 0) {
-            onCancelAllZeroPairs();
-          }
-        }, 150);
       }
     }
   };
 
-  // Action methods for selected tile(s)
+  // Wheel Zoom (Trackpad pinch & desktop wheel)
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+    const newScale = Math.max(0.5, Math.min(2.5, viewTransform.scale * zoomFactor));
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const newX = mouseX - (mouseX - viewTransform.x) * (newScale / viewTransform.scale);
+      const newY = mouseY - (mouseY - viewTransform.y) * (newScale / viewTransform.scale);
+
+      setViewTransform({ x: newX, y: newY, scale: newScale });
+    }
+  };
+
+  // Selected Tiles Actions
   const handleRotateSelected = useCallback(() => {
     if (selectedTileIds.size === 0) return;
-    playSound('snap');
+    playSound('flip');
     const updated = tiles.map((t) => {
       if (selectedTileIds.has(t.id)) {
-        const newRot = (t.rotation === 0 ? 90 : 0) as 0 | 90;
-        return { ...t, rotation: newRot };
+        return { ...t, rotation: (t.rotation === 0 ? 90 : 0) as 0 | 90 };
       }
       return t;
     });
     setTiles(updated);
     onTilesChange(updated);
-  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+  }, [selectedTileIds, tiles, setTiles, onTilesChange]);
 
   const handleFlipSignSelected = useCallback(() => {
     if (selectedTileIds.size === 0) return;
     playSound('flip');
-    const updated = tiles.map((t) =>
-      selectedTileIds.has(t.id) ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t
-    );
+    const updated = tiles.map((t) => {
+      if (selectedTileIds.has(t.id)) {
+        return { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign };
+      }
+      return t;
+    });
     setTiles(updated);
     onTilesChange(updated);
-  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+  }, [selectedTileIds, tiles, setTiles, onTilesChange]);
 
   const handleDuplicateSelected = useCallback(() => {
     if (selectedTileIds.size === 0) return;
     playSound('pickup');
-    const newDuplicates: TileData[] = [];
+    const newTiles: TileData[] = [];
     const newSelectedIds = new Set<string>();
 
     tiles.forEach((t) => {
       if (selectedTileIds.has(t.id)) {
-        const dupId = `tile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-        const dup: TileData = {
+        const id = `tile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        newTiles.push({
           ...t,
-          id: dupId,
+          id,
           x: t.x + 28,
           y: t.y + 28,
-        };
-        newDuplicates.push(dup);
-        newSelectedIds.add(dupId);
+        });
+        newSelectedIds.add(id);
       }
     });
 
-    if (newDuplicates.length > 0) {
-      const updated = [...tiles, ...newDuplicates];
-      setTiles(updated);
-      setSelectedTileIds(newSelectedIds);
-      onTilesChange(updated);
-    }
-  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+    const updated = [...tiles, ...newTiles];
+    setTiles(updated);
+    setSelectedTileIds(newSelectedIds);
+    onTilesChange(updated);
+  }, [selectedTileIds, tiles, setTiles, onTilesChange]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedTileIds.size === 0) return;
@@ -577,9 +737,8 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     setTiles(updated);
     setSelectedTileIds(new Set());
     onTilesChange(updated);
-  }, [tiles, selectedTileIds, setTiles, onTilesChange]);
+  }, [selectedTileIds, tiles, setTiles, onTilesChange]);
 
-  // Tile single actions
   const handleFlipSign = (tileId: string) => {
     playSound('flip');
     const updated = tiles.map((t) => (t.id === tileId ? { ...t, sign: (t.sign === 1 ? -1 : 1) as TileSign } : t));
@@ -588,14 +747,8 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   };
 
   const handleRotate = (tileId: string) => {
-    playSound('snap');
-    const updated = tiles.map((t) => {
-      if (t.id === tileId) {
-        const newRot = t.rotation === 0 ? 90 : 0;
-        return { ...t, rotation: newRot as 0 | 90 };
-      }
-      return t;
-    });
+    playSound('flip');
+    const updated = tiles.map((t) => (t.id === tileId ? { ...t, rotation: (t.rotation === 0 ? 90 : 0) as 0 | 90 } : t));
     setTiles(updated);
     onTilesChange(updated);
   };
@@ -681,6 +834,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onWheel={handleWheel}
     >
       {/* Background Grid Pattern */}
       {gridConfig.showGrid && (
@@ -730,39 +884,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         </div>
       )}
 
-      {/* 2. FACTOR TRACK AREA MODEL OVERLAY */}
-      {mode === 'factor' && (
-        <div className="absolute inset-0 pointer-events-none z-0">
-          {/* Top factor header row */}
-          <div className="absolute top-0 left-40 right-0 h-40 bg-emerald-950/15 border-b-2 border-dashed border-emerald-600/40 p-3">
-            <div className="text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <span>Top Dimension / Factor 1 (Width)</span>
-            </div>
-            <div className="text-[11px] text-emerald-500/80 font-mono">Place x bars and unit tiles horizontally here</div>
-          </div>
-
-          {/* Left factor header column */}
-          <div className="absolute top-40 left-0 w-40 bottom-0 bg-blue-950/15 border-r-2 border-dashed border-blue-600/40 p-3">
-            <div className="text-blue-400 font-bold text-xs uppercase tracking-wider">
-              Left Factor 2
-            </div>
-            <div className="text-[11px] text-blue-400/80 font-mono mt-1">Height dimension</div>
-          </div>
-
-          {/* Corner Intersection Guide */}
-          <div className="absolute top-0 left-0 w-40 h-40 bg-slate-900/90 border-r-2 border-b-2 border-slate-700 flex flex-col items-center justify-center text-center p-2">
-            <span className="text-xs font-bold text-slate-300">Factor Track Corner</span>
-            <span className="text-[10px] text-slate-500 mt-1">Product Area (Right & Below)</span>
-          </div>
-
-          {/* Product Region Area Label */}
-          <div className="absolute top-44 left-44 text-slate-600 font-bold text-xs uppercase tracking-widest pointer-events-none">
-            Solid Product Area [x², x, y, 1]
-          </div>
-        </div>
-      )}
-
-      {/* Transformed Canvas Container for Tiles */}
+      {/* Transformed Canvas Container for Tiles & Glowing Dimension Brackets */}
       <div
         id="canvas-transformed-plane"
         style={{
@@ -775,6 +897,165 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           left: 0,
         }}
       >
+        {/* DEDICATED TOP & LEFT FACTOR TRACKS (Exact layout from Screenshot 2) */}
+        {mode === 'factor' && (
+          <div className="absolute pointer-events-none z-0">
+            {/* Top-Left Corner Box */}
+            <div
+              className="absolute border-r-2 border-b-2 border-dashed border-cyan-500/40 bg-slate-900/30 p-3.5 flex flex-col justify-center select-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '180px',
+                height: '160px',
+              }}
+            >
+              <div className="text-xs font-bold text-slate-300">Factor Track Corner</div>
+              <div className="text-[10px] text-slate-400 font-medium leading-tight mt-1">
+                Product Area (Right & Below)
+              </div>
+            </div>
+
+            {/* Top Factor Track (Width Dimension) */}
+            <div
+              className="absolute border-b-2 border-dashed border-cyan-500/40 bg-cyan-950/10 px-4 py-2.5 flex flex-col justify-start select-none"
+              style={{
+                left: '180px',
+                top: 0,
+                width: '2400px',
+                height: '160px',
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-cyan-400 uppercase tracking-wider">
+                  TOP DIMENSION / FACTOR 1 (WIDTH)
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium mt-0.5">
+                Place x bars and unit tiles horizontally here
+              </span>
+            </div>
+
+            {/* Left Factor Track (Height Dimension) */}
+            <div
+              className="absolute border-r-2 border-dashed border-teal-500/40 bg-teal-950/10 px-3 py-3 flex flex-col justify-start select-none"
+              style={{
+                left: 0,
+                top: '160px',
+                width: '180px',
+                height: '2000px',
+              }}
+            >
+              <div className="text-xs font-black text-teal-400 uppercase tracking-wider">
+                LEFT FACTOR 2
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium leading-tight mt-0.5">
+                Height dimension
+              </span>
+            </div>
+
+            {/* Vertical Guide Line Extension */}
+            <div
+              className="absolute w-0 border-r-2 border-dashed border-cyan-500/40"
+              style={{
+                left: '180px',
+                top: '160px',
+                height: '2000px',
+              }}
+            />
+
+            {/* Horizontal Guide Line Extension */}
+            <div
+              className="absolute h-0 border-b-2 border-dashed border-cyan-500/40"
+              style={{
+                left: '180px',
+                top: '160px',
+                width: '2400px',
+              }}
+            />
+          </div>
+        )}
+
+        {/* Glowing Dimension Brackets & Factoring Validation Celebration Overlay */}
+        {solidRectResult.isSolidRectangle && solidRectResult.tilesInRect.length > 0 && (
+          <div className="absolute pointer-events-none z-20 transition-all duration-300">
+            {/* 1. Rectangle Outer Glow Perimeter */}
+            <div
+              className={`absolute border-2 rounded-lg transition-all ${
+                mode === 'factor' && factoringModel.isValidFactorization
+                  ? 'border-emerald-300 shadow-[0_0_35px_rgba(16,185,129,0.7)] bg-emerald-500/10 animate-pulse'
+                  : 'border-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.35)] bg-emerald-500/5'
+              }`}
+              style={{
+                left: `${solidRectResult.bounds.minX - 4}px`,
+                top: `${solidRectResult.bounds.minY - 4}px`,
+                width: `${solidRectResult.bounds.width + 8}px`,
+                height: `${solidRectResult.bounds.height + 8}px`,
+              }}
+            />
+
+            {/* 2. TOP GLOWING DIMENSION BRACKET (Width Factor) */}
+            <div
+              className="absolute flex flex-col items-center pointer-events-auto"
+              style={{
+                left: `${solidRectResult.bounds.minX}px`,
+                top: `${solidRectResult.bounds.minY - 46}px`,
+                width: `${solidRectResult.bounds.width}px`,
+              }}
+            >
+              {/* Width Factor Badge */}
+              <div className="bg-emerald-950/95 border-2 border-emerald-400 text-emerald-300 font-mono font-black text-xs sm:text-sm px-3 py-0.5 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)] flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Width:</span>
+                <span>{solidRectResult.topDimension.label || 'x'}</span>
+              </div>
+              {/* Horizontal Bracket Bar & End Ticks */}
+              <div className="w-full h-2.5 flex items-center relative mt-1">
+                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
+                <div className="w-full h-0.5 bg-emerald-400/90 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
+              </div>
+            </div>
+
+            {/* 3. LEFT GLOWING DIMENSION BRACKET (Height Factor) */}
+            <div
+              className="absolute flex flex-row items-center pointer-events-auto"
+              style={{
+                left: `${solidRectResult.bounds.minX - 58}px`,
+                top: `${solidRectResult.bounds.minY}px`,
+                height: `${solidRectResult.bounds.height}px`,
+              }}
+            >
+              {/* Height Factor Badge */}
+              <div className="bg-blue-950/95 border-2 border-blue-400 text-blue-300 font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1 whitespace-nowrap -rotate-90 origin-center">
+                <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Height:</span>
+                <span>{solidRectResult.leftDimension.label || 'x'}</span>
+              </div>
+              {/* Vertical Bracket Bar & End Ticks */}
+              <div className="h-full w-2.5 flex flex-col justify-center relative ml-1">
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
+                <div className="h-full w-0.5 bg-blue-400/90 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
+              </div>
+            </div>
+
+            {/* 4. Factored Equation Victory Pill */}
+            {((mode === 'factor' && factoringModel.isValidFactorization) || (mode !== 'factor' && solidRectResult.isValidTrinomialFactoring)) && (
+              <div
+                className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-slate-900/95 border-2 border-emerald-400 text-emerald-200 px-4 py-1.5 rounded-full shadow-[0_0_30px_rgba(16,185,129,0.6)] flex items-center gap-2 text-xs sm:text-sm font-black whitespace-nowrap z-30 pointer-events-auto animate-bounce"
+                style={{
+                  left: `${solidRectResult.bounds.minX + solidRectResult.bounds.width / 2}px`,
+                  top: `${solidRectResult.bounds.maxY + 14}px`,
+                }}
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>
+                  Factored: {mode === 'factor' ? factoringModel.fullEquationLatex : solidRectResult.fullEquationLatex}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Render Tiles */}
         {tiles.map((tile) => (
           <TileItem
@@ -841,14 +1122,14 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         </div>
       )}
 
-      {/* Floating Canvas View Controls (Zoom, Reset) - Bottom-Right to avoid banner overlap */}
+      {/* Floating Canvas View Controls (Zoom In/Out, Reset) */}
       <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl z-30">
         <button
           id="canvas-zoom-in-btn"
           type="button"
           title="Zoom In"
           className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
-          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.0, v.scale + 0.15) }))}
+          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.5, v.scale + 0.15) }))}
         >
           <ZoomIn className="w-5 h-5" />
         </button>
@@ -864,7 +1145,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         <button
           id="canvas-reset-view-btn"
           type="button"
-          title="Reset View Position"
+          title="Reset View Position (100%)"
           className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
           onClick={() => setViewTransform({ x: 0, y: 0, scale: 1 })}
         >

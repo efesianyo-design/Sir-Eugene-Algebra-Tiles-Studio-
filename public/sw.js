@@ -1,17 +1,10 @@
-// Offline Service Worker for Algebra Tiles Studio
-const CACHE_NAME = 'algebra-tiles-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
+// Offline-Capable Service Worker with Network-First Strategy for Algebra Tiles Studio
+// Ensures users always get the freshest updates instantly upon refreshing
+const CACHE_NAME = 'algebra-tiles-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
-  );
+  // Immediately activate new service worker without waiting
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -29,40 +22,48 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Navigation or asset requests
   if (event.request.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Return cache but update in background
-        fetch(event.request).then((networkResponse) => {
+  // For HTML navigations, main page, and scripts: always go to network first so refresh gets latest code
+  if (
+    event.request.mode === 'navigate' ||
+    event.request.headers.get('accept')?.includes('text/html') ||
+    event.request.url.includes('/sw.js') ||
+    event.request.url.includes('/manifest.json')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
+              cache.put(event.request, responseToCache);
             });
           }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
+        })
+        .catch(() => {
+          // Fallback to cache when offline
+          return caches.match(event.request).then((cached) => cached || caches.match('/index.html'));
+        })
+    );
+    return;
+  }
+
+  // For other static assets: Network-first with cache fallback
+  event.respondWith(
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
-
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
         return networkResponse;
-      }).catch(() => {
-        // If offline and requesting document, fallback to index
-        if (event.request.headers.get('accept')?.includes('text/html')) {
-          return caches.match('/index.html');
-        }
-      });
-    })
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });
