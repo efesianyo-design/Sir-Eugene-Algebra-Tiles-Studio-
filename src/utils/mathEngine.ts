@@ -301,43 +301,108 @@ export const detectSolidRectangle = (
   let bestLeftUnit = 0;
   let foundValidFit = false;
 
-  // Scan possible width factors (a*x + b) and height factors (c*x + d)
-  for (let a = -4; a <= 4; a++) {
-    for (let b = -12; b <= 12; b++) {
-      if (a === 0 && b === 0) continue;
-      const expectedW = Math.abs(a) * xSize + Math.abs(b) * unitSize;
-      if (Math.abs(boundingWidth - expectedW) <= 20) {
-        for (let c = -4; c <= 4; c++) {
-          for (let d = -12; d <= 12; d++) {
-            if (c === 0 && d === 0) continue;
-            const expectedH = Math.abs(c) * xSize + Math.abs(d) * unitSize;
-            if (Math.abs(boundingHeight - expectedH) <= 20) {
-              const prodX2 = a * c;
-              const prodX = a * d + b * c;
-              const prodUnit = b * d;
+  // 3a. Direct Edge Analysis: Compute dimensions directly from physical edge composition
+  const topEdgeTiles = tileRects
+    .filter((r) => Math.abs(r.y1 - minY) <= 15)
+    .sort((a, b) => a.x1 - b.x1);
 
-              if (
-                prodX2 === productBreakdown.x2 &&
-                prodX === productBreakdown.x &&
-                prodUnit === productBreakdown.unit
-              ) {
-                bestTopX = a;
-                bestTopUnit = b;
-                bestLeftX = c;
-                bestLeftUnit = d;
-                foundValidFit = true;
-                break;
+  let edgeTopX = 0;
+  let edgeTopUnit = 0;
+  topEdgeTiles.forEach((r) => {
+    const t = r.tile;
+    if (t.kind === 'x2') {
+      edgeTopX += t.sign;
+    } else if (t.kind === 'x' && t.rotation === 0) {
+      edgeTopX += t.sign;
+    } else if (t.kind === 'x' && t.rotation === 90) {
+      edgeTopUnit += t.sign;
+    } else if (t.kind === 'unit') {
+      edgeTopUnit += t.sign;
+    }
+  });
+
+  const leftEdgeTiles = tileRects
+    .filter((r) => Math.abs(r.x1 - minX) <= 15)
+    .sort((a, b) => a.y1 - b.y1);
+
+  let edgeLeftX = 0;
+  let edgeLeftUnit = 0;
+  leftEdgeTiles.forEach((r) => {
+    const t = r.tile;
+    if (t.kind === 'x2') {
+      edgeLeftX += t.sign;
+    } else if (t.kind === 'x' && t.rotation === 90) {
+      edgeLeftX += t.sign;
+    } else if (t.kind === 'x' && t.rotation === 0) {
+      edgeLeftUnit += t.sign;
+    } else if (t.kind === 'unit') {
+      edgeLeftUnit += t.sign;
+    }
+  });
+
+  // Verify if physical edge dimensions multiply to match the polynomial
+  const edgeProdX2 = edgeTopX * edgeLeftX;
+  const edgeProdX = edgeTopX * edgeLeftUnit + edgeTopUnit * edgeLeftX;
+  const edgeProdUnit = edgeTopUnit * edgeLeftUnit;
+
+  if (
+    (edgeTopX !== 0 || edgeTopUnit !== 0) &&
+    (edgeLeftX !== 0 || edgeLeftUnit !== 0) &&
+    edgeProdX2 === productBreakdown.x2 &&
+    edgeProdX === productBreakdown.x &&
+    edgeProdUnit === productBreakdown.unit
+  ) {
+    bestTopX = edgeTopX;
+    bestTopUnit = edgeTopUnit;
+    bestLeftX = edgeLeftX;
+    bestLeftUnit = edgeLeftUnit;
+    foundValidFit = true;
+  }
+
+  // 3b. Solver fallback: Prioritize standard positive curriculum factors (a >= 0, c >= 0)
+  if (!foundValidFit) {
+    const aList = productBreakdown.x2 < 0 ? [-1, -2, -3, 1, 2, 3] : [1, 2, 3, 4, 0];
+    const cList = productBreakdown.x2 < 0 ? [1, 2, 3, -1, -2, -3] : [1, 2, 3, 4, 0];
+    const bList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12];
+    const dList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12];
+
+    for (const a of aList) {
+      for (const b of bList) {
+        if (a === 0 && b === 0) continue;
+        const expectedW = Math.abs(a) * xSize + Math.abs(b) * unitSize;
+        if (Math.abs(boundingWidth - expectedW) <= 24) {
+          for (const c of cList) {
+            for (const d of dList) {
+              if (c === 0 && d === 0) continue;
+              const expectedH = Math.abs(c) * xSize + Math.abs(d) * unitSize;
+              if (Math.abs(boundingHeight - expectedH) <= 24) {
+                const prodX2 = a * c;
+                const prodX = a * d + b * c;
+                const prodUnit = b * d;
+
+                if (
+                  prodX2 === productBreakdown.x2 &&
+                  prodX === productBreakdown.x &&
+                  prodUnit === productBreakdown.unit
+                ) {
+                  bestTopX = a;
+                  bestTopUnit = b;
+                  bestLeftX = c;
+                  bestLeftUnit = d;
+                  foundValidFit = true;
+                  break;
+                }
               }
             }
+            if (foundValidFit) break;
           }
-          if (foundValidFit) break;
         }
+        if (foundValidFit) break;
       }
-      if (foundValidFit) break;
     }
   }
 
-  // Fallback: estimate dimensions mathematically from boundingWidth and boundingHeight
+  // 3c. Geometric Fallback from bounding width/height
   if (!foundValidFit) {
     let minDiffW = Infinity;
     for (let a = 0; a <= 5; a++) {
@@ -530,20 +595,28 @@ export const computeFactoringModel = (
     const centerX = t.x + dim.width / 2;
     const centerY = t.y + dim.height / 2;
 
-    // Explicit zone assignment takes precedence
-    if (t.zone === 'top_factor' || (centerY < 155 && centerX >= 155 && !t.zone)) {
+    if (t.zone === 'top_factor') {
       topTrackTiles.push(t);
-    } else if (t.zone === 'left_factor' || (centerX < 155 && centerY >= 155 && !t.zone)) {
+    } else if (t.zone === 'left_factor') {
       leftTrackTiles.push(t);
-    } else if (t.zone === 'product_area' || (centerX >= 155 && centerY >= 155 && !t.zone)) {
+    } else if (t.zone === 'product_area') {
       productAreaTiles.push(t);
     } else {
-      if (centerY < 155) {
+      // Spatial detection with clear boundary at 160px
+      if (t.y + dim.height <= 170 || (centerY < 165 && centerX >= 140)) {
         topTrackTiles.push(t);
-      } else if (centerX < 155) {
+      } else if (t.x + dim.width <= 170 || (centerX < 165 && centerY >= 140)) {
         leftTrackTiles.push(t);
-      } else {
+      } else if (t.x >= 140 && t.y >= 140) {
         productAreaTiles.push(t);
+      } else {
+        if (centerY < 165) {
+          topTrackTiles.push(t);
+        } else if (centerX < 165) {
+          leftTrackTiles.push(t);
+        } else {
+          productAreaTiles.push(t);
+        }
       }
     }
   });

@@ -447,10 +447,11 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     if (isPanning) {
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
+      const maxOffset = 500;
       setViewTransform((prev) => ({
         ...prev,
-        x: panStartRef.current.viewX + dx,
-        y: panStartRef.current.viewY + dy,
+        x: Math.max(-maxOffset, Math.min(maxOffset, panStartRef.current.viewX + dx)),
+        y: Math.max(-maxOffset, Math.min(maxOffset, panStartRef.current.viewY + dy)),
       }));
       return;
     }
@@ -509,16 +510,18 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               zone = (init.x + effectiveDx) < canvasMidX ? 'left' : 'right';
             } else if (mode === 'factor') {
               const dim = getTileDimensions(t.kind, t.rotation, gridConfig.unitSize, gridConfig.xSize, gridConfig.ySize);
-              const finalCenterX = (init.x + effectiveDx) + dim.width / 2;
-              const finalCenterY = (init.y + effectiveDy) + dim.height / 2;
-              if (finalCenterY < 155 && finalCenterX >= 155) {
+              const finalX = Math.max(0, init.x + effectiveDx);
+              const finalY = Math.max(0, init.y + effectiveDy);
+              const finalCenterX = finalX + dim.width / 2;
+              const finalCenterY = finalY + dim.height / 2;
+              if (finalY + dim.height <= 170 || (finalCenterY < 165 && finalCenterX >= 140)) {
                 zone = 'top_factor';
-              } else if (finalCenterX < 155 && finalCenterY >= 155) {
+              } else if (finalX + dim.width <= 170 || (finalCenterX < 165 && finalCenterY >= 140)) {
                 zone = 'left_factor';
-              } else if (finalCenterX >= 155 && finalCenterY >= 155) {
+              } else if (finalX >= 140 && finalY >= 140) {
                 zone = 'product_area';
               } else {
-                zone = 'main';
+                zone = finalCenterY < 165 ? 'top_factor' : finalCenterX < 165 ? 'left_factor' : 'product_area';
               }
             }
 
@@ -661,21 +664,40 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     }
   };
 
-  // Wheel Zoom (Trackpad pinch & desktop wheel)
+  // Wheel Zoom & Pan Control
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-    const newScale = Math.max(0.5, Math.min(2.5, viewTransform.scale * zoomFactor));
+    // Only zoom when user holds Ctrl/Meta or performs a pinch gesture on trackpad
+    if (e.ctrlKey || e.metaKey) {
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      const newScale = Math.max(0.6, Math.min(2.0, viewTransform.scale * zoomFactor));
 
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-      const newX = mouseX - (mouseX - viewTransform.x) * (newScale / viewTransform.scale);
-      const newY = mouseY - (mouseY - viewTransform.y) * (newScale / viewTransform.scale);
+        const newX = mouseX - (mouseX - viewTransform.x) * (newScale / viewTransform.scale);
+        const newY = mouseY - (mouseY - viewTransform.y) * (newScale / viewTransform.scale);
 
-      setViewTransform({ x: newX, y: newY, scale: newScale });
+        // Clamp to prevent canvas from flying off-screen
+        const maxOffset = 500;
+        setViewTransform({
+          x: Math.max(-maxOffset, Math.min(maxOffset, newX)),
+          y: Math.max(-maxOffset, Math.min(maxOffset, newY)),
+          scale: newScale,
+        });
+      }
+    } else if (viewTransform.scale > 1.05 || isPanning) {
+      // If zoomed in, allow gentle scroll panning within bounded limits
+      const dx = -e.deltaX * 0.7;
+      const dy = -e.deltaY * 0.7;
+      const maxOffset = 500;
+      setViewTransform((prev) => ({
+        ...prev,
+        x: Math.max(-maxOffset, Math.min(maxOffset, prev.x + dx)),
+        y: Math.max(-maxOffset, Math.min(maxOffset, prev.y + dy)),
+      }));
     }
   };
 
@@ -1133,35 +1155,46 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         </div>
       )}
 
-      {/* Floating Canvas View Controls (Zoom In/Out, Reset) */}
+      {/* Floating Canvas View Controls (Zoom In/Out, Recenter) */}
       <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl z-30">
-        <button
-          id="canvas-zoom-in-btn"
-          type="button"
-          title="Zoom In"
-          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
-          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.5, v.scale + 0.15) }))}
-        >
-          <ZoomIn className="w-5 h-5" />
-        </button>
         <button
           id="canvas-zoom-out-btn"
           type="button"
           title="Zoom Out"
           className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
-          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.max(0.5, v.scale - 0.15) }))}
+          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.max(0.6, Math.round((v.scale - 0.15) * 100) / 100) }))}
         >
-          <ZoomOut className="w-5 h-5" />
+          <ZoomOut className="w-4 h-4" />
         </button>
         <button
-          id="canvas-reset-view-btn"
+          id="canvas-zoom-percentage-btn"
           type="button"
-          title="Reset View Position (100%)"
-          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
+          title="Reset to 100%"
+          className="px-2 py-1 text-[11px] font-mono font-bold text-slate-300 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap"
           onClick={() => setViewTransform({ x: 0, y: 0, scale: 1 })}
         >
-          <RotateCcw className="w-5 h-5" />
+          {Math.round(viewTransform.scale * 100)}%
         </button>
+        <button
+          id="canvas-zoom-in-btn"
+          type="button"
+          title="Zoom In"
+          className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors flex items-center justify-center active:scale-95"
+          onClick={() => setViewTransform((v) => ({ ...v, scale: Math.min(2.0, Math.round((v.scale + 0.15) * 100) / 100) }))}
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        {(viewTransform.x !== 0 || viewTransform.y !== 0 || viewTransform.scale !== 1) && (
+          <button
+            id="canvas-reset-view-btn"
+            type="button"
+            title="Recenter Canvas (Reset Position)"
+            className="min-h-[44px] min-w-[44px] p-2.5 text-cyan-400 bg-cyan-950/60 hover:bg-cyan-900/80 rounded-xl transition-colors flex items-center justify-center active:scale-95 border border-cyan-700/50"
+            onClick={() => setViewTransform({ x: 0, y: 0, scale: 1 })}
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Floating Action Bar for Selected Tile(s) - 44px Touch Targets */}
