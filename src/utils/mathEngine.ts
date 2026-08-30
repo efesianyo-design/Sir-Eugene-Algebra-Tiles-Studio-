@@ -256,8 +256,8 @@ export const detectSolidRectangle = (
 
   if (boundingWidth <= 0 || boundingHeight <= 0) return emptyResult;
 
-  // 1. Area Test: Total sum of tile areas must closely equal bounding box area (allow subpixel tolerance)
-  const areaTolerance = Math.max(160, tiles.length * (unitSize * 2));
+  // 1. Area Test: Total sum of tile areas must closely equal bounding box area
+  const areaTolerance = Math.max(300, tiles.length * (unitSize * 4));
   const areaDifference = Math.abs(totalTileArea - boundingArea);
   const isAreaFilled = areaDifference <= areaTolerance;
 
@@ -268,7 +268,7 @@ export const detectSolidRectangle = (
     };
   }
 
-  // 2. Overlap Test: Ensure tiles are not stacked on top of each other (ignore 1-2px edge touching/snapping)
+  // 2. Overlap Test: Ensure tiles are not stacked on top of each other
   for (let i = 0; i < tileRects.length; i++) {
     for (let j = i + 1; j < tileRects.length; j++) {
       const r1 = tileRects[i];
@@ -283,7 +283,7 @@ export const detectSolidRectangle = (
       const interArea = interW * interH;
 
       // Only reject if there is a substantial 2D collision overlap in both width and height
-      if (interW > 6 && interH > 6 && interArea > 60) {
+      if (interW > 8 && interH > 8 && interArea > 80) {
         return {
           ...emptyResult,
           bounds: { minX, maxX, minY, maxY, width: boundingWidth, height: boundingHeight },
@@ -292,73 +292,79 @@ export const detectSolidRectangle = (
     }
   }
 
-  // 3. Scan Top Edge Tiles (width dimension: a*x + b)
-  const topRowTiles = tileRects
-    .filter((r) => Math.abs(r.y1 - minY) <= 4)
-    .sort((a, b) => a.x1 - b.x1);
+  // 3. Mathematical Factor Decomposition from Bounding Geometry & Polynomial Terms
+  const productBreakdown = computeExpressionBreakdown(tiles);
 
-  let topXCount = 0;
-  let topUnitCount = 0;
-  let topCoveredWidth = 0;
+  let bestTopX = 0;
+  let bestTopUnit = 0;
+  let bestLeftX = 0;
+  let bestLeftUnit = 0;
+  let foundValidFit = false;
 
-  topRowTiles.forEach((r) => {
-    const t = r.tile;
-    if (t.kind === 'x2') {
-      topXCount += t.sign;
-      topCoveredWidth += r.w;
-    } else if (t.kind === 'x' && t.rotation === 0) {
-      // Horizontal x-bar
-      topXCount += t.sign;
-      topCoveredWidth += r.w;
-    } else if (t.kind === 'x' && t.rotation === 90) {
-      // Vertical x-bar: width is unitSize
-      topUnitCount += t.sign;
-      topCoveredWidth += r.w;
-    } else if (t.kind === 'unit') {
-      topUnitCount += t.sign;
-      topCoveredWidth += r.w;
+  // Scan possible width factors (a*x + b) and height factors (c*x + d)
+  for (let a = -4; a <= 4; a++) {
+    for (let b = -12; b <= 12; b++) {
+      if (a === 0 && b === 0) continue;
+      const expectedW = Math.abs(a) * xSize + Math.abs(b) * unitSize;
+      if (Math.abs(boundingWidth - expectedW) <= 20) {
+        for (let c = -4; c <= 4; c++) {
+          for (let d = -12; d <= 12; d++) {
+            if (c === 0 && d === 0) continue;
+            const expectedH = Math.abs(c) * xSize + Math.abs(d) * unitSize;
+            if (Math.abs(boundingHeight - expectedH) <= 20) {
+              const prodX2 = a * c;
+              const prodX = a * d + b * c;
+              const prodUnit = b * d;
+
+              if (
+                prodX2 === productBreakdown.x2 &&
+                prodX === productBreakdown.x &&
+                prodUnit === productBreakdown.unit
+              ) {
+                bestTopX = a;
+                bestTopUnit = b;
+                bestLeftX = c;
+                bestLeftUnit = d;
+                foundValidFit = true;
+                break;
+              }
+            }
+          }
+          if (foundValidFit) break;
+        }
+      }
+      if (foundValidFit) break;
     }
-  });
+  }
 
-  // Top edge must cover the full bounding width
-  const isTopEdgeComplete = Math.abs(topCoveredWidth - boundingWidth) <= 4;
-
-  // 4. Scan Left Edge Tiles (height dimension: c*x + d)
-  const leftColTiles = tileRects
-    .filter((r) => Math.abs(r.x1 - minX) <= 4)
-    .sort((a, b) => a.y1 - b.y1);
-
-  let leftXCount = 0;
-  let leftUnitCount = 0;
-  let leftCoveredHeight = 0;
-
-  leftColTiles.forEach((r) => {
-    const t = r.tile;
-    if (t.kind === 'x2') {
-      leftXCount += t.sign;
-      leftCoveredHeight += r.h;
-    } else if (t.kind === 'x' && t.rotation === 90) {
-      // Vertical x-bar: height is xSize
-      leftXCount += t.sign;
-      leftCoveredHeight += r.h;
-    } else if (t.kind === 'x' && t.rotation === 0) {
-      // Horizontal x-bar: height is unitSize
-      leftUnitCount += t.sign;
-      leftCoveredHeight += r.h;
-    } else if (t.kind === 'unit') {
-      leftUnitCount += t.sign;
-      leftCoveredHeight += r.h;
+  // Fallback: estimate dimensions mathematically from boundingWidth and boundingHeight
+  if (!foundValidFit) {
+    let minDiffW = Infinity;
+    for (let a = 0; a <= 5; a++) {
+      for (let b = 0; b <= 15; b++) {
+        if (a === 0 && b === 0) continue;
+        const diff = Math.abs(boundingWidth - (a * xSize + b * unitSize));
+        if (diff < minDiffW) {
+          minDiffW = diff;
+          bestTopX = a;
+          bestTopUnit = b;
+        }
+      }
     }
-  });
 
-  // Left edge must cover the full bounding height
-  const isLeftEdgeComplete = Math.abs(leftCoveredHeight - boundingHeight) <= 4;
-
-  const expectedWidthPx = Math.abs(topXCount) * xSize + Math.abs(topUnitCount) * unitSize;
-  const expectedHeightPx = Math.abs(leftXCount) * xSize + Math.abs(leftUnitCount) * unitSize;
-
-  const isWidthExact = isTopEdgeComplete && Math.abs(boundingWidth - expectedWidthPx) <= 4;
-  const isHeightExact = isLeftEdgeComplete && Math.abs(boundingHeight - expectedHeightPx) <= 4;
+    let minDiffH = Infinity;
+    for (let c = 0; c <= 5; c++) {
+      for (let d = 0; d <= 15; d++) {
+        if (c === 0 && d === 0) continue;
+        const diff = Math.abs(boundingHeight - (c * xSize + d * unitSize));
+        if (diff < minDiffH) {
+          minDiffH = diff;
+          bestLeftX = c;
+          bestLeftUnit = d;
+        }
+      }
+    }
+  }
 
   // Format dimension strings
   const formatDim = (xCount: number, uCount: number): { label: string; latex: string } => {
@@ -383,30 +389,26 @@ export const detectSolidRectangle = (
     return { label: raw, latex };
   };
 
-  const topDim = formatDim(topXCount, topUnitCount);
-  const leftDim = formatDim(leftXCount, leftUnitCount);
+  const topDim = formatDim(bestTopX, bestTopUnit);
+  const leftDim = formatDim(bestLeftX, bestLeftUnit);
 
-  const productBreakdown = computeExpressionBreakdown(tiles);
   const factoredLatex = `${leftDim.latex}${topDim.latex}`;
   const fullEquationLatex = `${factoredLatex} = ${productBreakdown.simplifiedLatex}`;
 
-  // Valid Trinomial Factoring condition:
-  // (leftX*x + leftUnit) * (topX*x + topUnit) equals product polynomial breakdown exactly!
-  const expectedProductX2 = leftXCount * topXCount;
-  const expectedProductX = leftXCount * topUnitCount + leftUnitCount * topXCount;
-  const expectedProductUnit = leftUnitCount * topUnitCount;
+  const expectedProductX2 = bestLeftX * bestTopX;
+  const expectedProductX = bestLeftX * bestTopUnit + bestLeftUnit * bestTopX;
+  const expectedProductUnit = bestLeftUnit * bestTopUnit;
 
   const isValidTrinomialFactoring =
-    isWidthExact &&
-    isHeightExact &&
-    (topXCount !== 0 || topUnitCount !== 0) &&
-    (leftXCount !== 0 || leftUnitCount !== 0) &&
-    productBreakdown.x2 === expectedProductX2 &&
-    productBreakdown.x === expectedProductX &&
-    productBreakdown.unit === expectedProductUnit;
+    foundValidFit ||
+    ((bestTopX !== 0 || bestTopUnit !== 0) &&
+      (bestLeftX !== 0 || bestLeftUnit !== 0) &&
+      productBreakdown.x2 === expectedProductX2 &&
+      productBreakdown.x === expectedProductX &&
+      productBreakdown.unit === expectedProductUnit);
 
   return {
-    isSolidRectangle: isWidthExact && isHeightExact,
+    isSolidRectangle: true,
     tilesInRect: tiles,
     bounds: {
       minX,
@@ -417,14 +419,14 @@ export const detectSolidRectangle = (
       height: boundingHeight,
     },
     topDimension: {
-      xCount: topXCount,
-      unitCount: topUnitCount,
+      xCount: bestTopX,
+      unitCount: bestTopUnit,
       label: topDim.label,
       latex: topDim.latex,
     },
     leftDimension: {
-      xCount: leftXCount,
-      unitCount: leftUnitCount,
+      xCount: bestLeftX,
+      unitCount: bestLeftUnit,
       label: leftDim.label,
       latex: leftDim.latex,
     },
@@ -486,7 +488,7 @@ export const parseTargetTerms = (str: string): { x2: number; x: number; unit: nu
   return { x2, x, unit };
 };
 
-export const FACTOR_CORNER_X = 180;
+export const FACTOR_CORNER_X = 160;
 export const FACTOR_CORNER_Y = 160;
 
 export interface FactoringModelResult {
@@ -524,21 +526,24 @@ export const computeFactoringModel = (
   const strayTiles: TileData[] = [];
 
   tiles.forEach((t) => {
-    // Explicit zone assignment or coordinate quadrant
-    if (t.zone === 'top_factor' || (t.y < FACTOR_CORNER_Y + 15 && t.x >= FACTOR_CORNER_X - 25)) {
+    const dim = getTileDimensions(t.kind, t.rotation, unitSize, xSize, ySize);
+    const centerX = t.x + dim.width / 2;
+    const centerY = t.y + dim.height / 2;
+
+    // Explicit zone assignment takes precedence
+    if (t.zone === 'top_factor' || (centerY < 155 && centerX >= 155 && !t.zone)) {
       topTrackTiles.push(t);
-    } else if (t.zone === 'left_factor' || (t.x < FACTOR_CORNER_X + 15 && t.y >= FACTOR_CORNER_Y - 25)) {
+    } else if (t.zone === 'left_factor' || (centerX < 155 && centerY >= 155 && !t.zone)) {
       leftTrackTiles.push(t);
-    } else if (t.zone === 'product_area' || (t.x >= FACTOR_CORNER_X - 25 && t.y >= FACTOR_CORNER_Y - 25)) {
+    } else if (t.zone === 'product_area' || (centerX >= 155 && centerY >= 155 && !t.zone)) {
       productAreaTiles.push(t);
     } else {
-      // Top-Left corner space: if tile is placed horizontally, treat as top track; if vertical, treat as left track
-      if (t.kind === 'x' && t.rotation === 0) {
+      if (centerY < 155) {
         topTrackTiles.push(t);
-      } else if (t.kind === 'x' && t.rotation === 90) {
+      } else if (centerX < 155) {
         leftTrackTiles.push(t);
       } else {
-        strayTiles.push(t);
+        productAreaTiles.push(t);
       }
     }
   });
@@ -547,12 +552,8 @@ export const computeFactoringModel = (
   let topX = 0;
   let topUnit = 0;
   topTrackTiles.forEach((t) => {
-    if (t.kind === 'x' && t.rotation === 0) {
+    if (t.kind === 'x' || t.kind === 'x2') {
       topX += t.sign;
-    } else if (t.kind === 'x2') {
-      topX += t.sign;
-    } else if (t.kind === 'x' && t.rotation === 90) {
-      topUnit += t.sign;
     } else if (t.kind === 'unit') {
       topUnit += t.sign;
     }
@@ -562,19 +563,17 @@ export const computeFactoringModel = (
   let leftX = 0;
   let leftUnit = 0;
   leftTrackTiles.forEach((t) => {
-    if (t.kind === 'x' && t.rotation === 90) {
+    if (t.kind === 'x' || t.kind === 'x2') {
       leftX += t.sign;
-    } else if (t.kind === 'x2') {
-      leftX += t.sign;
-    } else if (t.kind === 'x' && t.rotation === 0) {
-      leftUnit += t.sign;
     } else if (t.kind === 'unit') {
       leftUnit += t.sign;
     }
   });
 
-  const productBreakdown = computeExpressionBreakdown(productAreaTiles.length > 0 ? productAreaTiles : tiles);
-  const solidRect = detectSolidRectangle(productAreaTiles.length > 0 ? productAreaTiles : tiles, unitSize, xSize, ySize);
+  // Evaluate solid rectangle on product area tiles (or all tiles if no tracks)
+  const tilesForProduct = productAreaTiles.length > 0 ? productAreaTiles : tiles;
+  const solidRect = detectSolidRectangle(tilesForProduct, unitSize, xSize, ySize);
+  const productBreakdown = computeExpressionBreakdown(tilesForProduct);
 
   const formatDimensionString = (xCount: number, uCount: number): { label: string; latex: string } => {
     const parts: string[] = [];
@@ -599,7 +598,6 @@ export const computeFactoringModel = (
   const hasTopTrack = topTrackTiles.length > 0;
   const hasLeftTrack = leftTrackTiles.length > 0;
   const hasProductTiles = productAreaTiles.length > 0;
-  const hasTrackTiles = hasTopTrack && hasLeftTrack && hasProductTiles && strayTiles.length === 0;
 
   // Target question polynomial verification if target is present
   const target = targetQuestion ? parseTargetTerms(targetQuestion) : null;
@@ -609,155 +607,92 @@ export const computeFactoringModel = (
     productBreakdown.unit === target.unit
   );
 
-  // Scenario 1: Student is using the Full Factor Track + Product Area Model
-  if (hasTrackTiles) {
-    const topDim = formatDimensionString(topX, topUnit);
-    const leftDim = formatDimensionString(leftX, leftUnit);
+  const topDim = hasTopTrack ? formatDimensionString(topX, topUnit) : solidRect.topDimension;
+  const leftDim = hasLeftTrack ? formatDimensionString(leftX, leftUnit) : solidRect.leftDimension;
 
-    const expectedX2 = topX * leftX;
-    const expectedX = topX * leftUnit + topUnit * leftX;
-    const expectedUnit = topUnit * leftUnit;
+  const expectedX2 = topX * leftX;
+  const expectedX = topX * leftUnit + topUnit * leftX;
+  const expectedUnit = topUnit * leftUnit;
 
-    // 1. Algebraic multiplication matches product breakdown
-    const isAlgebraicallyValid =
-      (topX !== 0 || topUnit !== 0) &&
-      (leftX !== 0 || leftUnit !== 0) &&
-      productBreakdown.x2 === expectedX2 &&
-      productBreakdown.x === expectedX &&
-      productBreakdown.unit === expectedUnit;
+  // 1. Algebraic multiplication matches product breakdown
+  const isAlgebraicallyValid =
+    (topX !== 0 || topUnit !== 0) &&
+    (leftX !== 0 || leftUnit !== 0) &&
+    productBreakdown.x2 === expectedX2 &&
+    productBreakdown.x === expectedX &&
+    productBreakdown.unit === expectedUnit;
 
-    // 2. Geometric check: Product area tiles form a solid rectangle
-    const isGeometricValid = solidRect.isSolidRectangle;
+  // 2. Geometric check: Product area tiles form a solid rectangle
+  const isGeometricValid = solidRect.isSolidRectangle && solidRect.isValidTrinomialFactoring;
 
-    // 3. Dimension match: Top track matches width; Left track matches height
-    const topTrackMatchesWidth =
-      (solidRect.topDimension.xCount === topX && solidRect.topDimension.unitCount === topUnit) ||
-      Math.abs(topX * xSize + topUnit * unitSize - solidRect.bounds.width) <= 8 ||
-      isAlgebraicallyValid;
+  // 3. Dimension match: Top track matches width; Left track matches height
+  const topTrackMatchesWidth =
+    (solidRect.topDimension.xCount === topX && solidRect.topDimension.unitCount === topUnit) ||
+    Math.abs(topX * xSize + topUnit * unitSize - solidRect.bounds.width) <= 12 ||
+    isAlgebraicallyValid;
 
-    const leftTrackMatchesHeight =
-      (solidRect.leftDimension.xCount === leftX && solidRect.leftDimension.unitCount === leftUnit) ||
-      Math.abs(leftX * xSize + leftUnit * unitSize - solidRect.bounds.height) <= 8 ||
-      isAlgebraicallyValid;
+  const leftTrackMatchesHeight =
+    (solidRect.leftDimension.xCount === leftX && solidRect.leftDimension.unitCount === leftUnit) ||
+    Math.abs(leftX * xSize + leftUnit * unitSize - solidRect.bounds.height) <= 12 ||
+    isAlgebraicallyValid;
 
-    const isFullyValid = isAlgebraicallyValid && (isGeometricValid || (topTrackMatchesWidth && leftTrackMatchesHeight)) && matchesTarget;
+  // Complete Factorization: only valid when both factor tracks are present and match the product rectangle
+  const isFullyValid =
+    hasTopTrack &&
+    hasLeftTrack &&
+    (hasProductTiles || solidRect.tilesInRect.length > 0) &&
+    strayTiles.length === 0 &&
+    isGeometricValid &&
+    topTrackMatchesWidth &&
+    leftTrackMatchesHeight &&
+    isAlgebraicallyValid &&
+    matchesTarget;
 
-    const topBreakdown: ExpressionBreakdown = {
-      x2: 0,
-      y2: 0,
-      xy: 0,
-      x: topX,
-      y: 0,
-      unit: topUnit,
-      rawCount: {
-        positive: Math.max(0, topX) + Math.max(0, topUnit),
-        negative: Math.min(0, topX) + Math.min(0, topUnit),
-      },
-      latex: topDim.latex,
-      simplifiedLatex: topDim.label,
-      expandedPolynomial: topDim.label,
-    };
+  const topBreakdown: ExpressionBreakdown = {
+    x2: 0,
+    y2: 0,
+    xy: 0,
+    x: topX,
+    y: 0,
+    unit: topUnit,
+    rawCount: {
+      positive: Math.max(0, topX) + Math.max(0, topUnit),
+      negative: Math.min(0, topX) + Math.min(0, topUnit),
+    },
+    latex: topDim.latex,
+    simplifiedLatex: topDim.label,
+    expandedPolynomial: topDim.label,
+  };
 
-    const leftBreakdown: ExpressionBreakdown = {
-      x2: 0,
-      y2: 0,
-      xy: 0,
-      x: leftX,
-      y: 0,
-      unit: leftUnit,
-      rawCount: {
-        positive: Math.max(0, leftX) + Math.max(0, leftUnit),
-        negative: Math.min(0, leftX) + Math.min(0, leftUnit),
-      },
-      latex: leftDim.latex,
-      simplifiedLatex: leftDim.label,
-      expandedPolynomial: leftDim.label,
-    };
+  const leftBreakdown: ExpressionBreakdown = {
+    x2: 0,
+    y2: 0,
+    xy: 0,
+    x: leftX,
+    y: 0,
+    unit: leftUnit,
+    rawCount: {
+      positive: Math.max(0, leftX) + Math.max(0, leftUnit),
+      negative: Math.min(0, leftX) + Math.min(0, leftUnit),
+    },
+    latex: leftDim.latex,
+    simplifiedLatex: leftDim.label,
+    expandedPolynomial: leftDim.label,
+  };
 
-    const fullEquationLatex = `${topDim.latex}${leftDim.latex} = ${productBreakdown.simplifiedLatex}`;
-
-    return {
-      topFactor: topBreakdown,
-      leftFactor: leftBreakdown,
-      productArea: productBreakdown,
-      topLatex: topDim.latex,
-      leftLatex: leftDim.latex,
-      productLatex: productBreakdown.simplifiedLatex,
-      fullEquationLatex,
-      isValidFactorization: isFullyValid,
-      topCount: topTrackTiles.length,
-      leftCount: leftTrackTiles.length,
-      productCount: productAreaTiles.length,
-      solidRectangle: solidRect,
-    };
-  }
-
-  // Scenario 2: Student has placed tiles into a solid rectangle directly on canvas (without track tiles)
-  // ONLY valid if NO track tiles are placed, NO stray tiles, and all tiles on canvas form the solid rectangle matching target
-  const noTrackTiles = !hasTopTrack && !hasLeftTrack;
-  if (noTrackTiles && solidRect.isSolidRectangle && solidRect.isValidTrinomialFactoring && solidRect.tilesInRect.length === tiles.length && tiles.length >= 2 && matchesTarget) {
-    const topBreakdown: ExpressionBreakdown = {
-      x2: 0,
-      y2: 0,
-      xy: 0,
-      x: solidRect.topDimension.xCount,
-      y: 0,
-      unit: solidRect.topDimension.unitCount,
-      rawCount: {
-        positive: Math.max(0, solidRect.topDimension.xCount) + Math.max(0, solidRect.topDimension.unitCount),
-        negative: Math.min(0, solidRect.topDimension.xCount) + Math.min(0, solidRect.topDimension.unitCount),
-      },
-      latex: solidRect.topDimension.latex,
-      simplifiedLatex: solidRect.topDimension.label,
-      expandedPolynomial: solidRect.topDimension.label,
-    };
-
-    const leftBreakdown: ExpressionBreakdown = {
-      x2: 0,
-      y2: 0,
-      xy: 0,
-      x: solidRect.leftDimension.xCount,
-      y: 0,
-      unit: solidRect.leftDimension.unitCount,
-      rawCount: {
-        positive: Math.max(0, solidRect.leftDimension.xCount) + Math.max(0, solidRect.leftDimension.unitCount),
-        negative: Math.min(0, solidRect.leftDimension.xCount) + Math.min(0, solidRect.leftDimension.unitCount),
-      },
-      latex: solidRect.leftDimension.latex,
-      simplifiedLatex: solidRect.leftDimension.label,
-      expandedPolynomial: solidRect.leftDimension.label,
-    };
-
-    return {
-      topFactor: topBreakdown,
-      leftFactor: leftBreakdown,
-      productArea: solidRect.productBreakdown,
-      topLatex: solidRect.topDimension.latex,
-      leftLatex: solidRect.leftDimension.latex,
-      productLatex: solidRect.productBreakdown.simplifiedLatex,
-      fullEquationLatex: solidRect.fullEquationLatex,
-      isValidFactorization: true,
-      topCount: solidRect.topDimension.xCount + solidRect.topDimension.unitCount,
-      leftCount: solidRect.leftDimension.xCount + solidRect.leftDimension.unitCount,
-      productCount: tiles.length,
-      solidRectangle: solidRect,
-    };
-  }
-
-  // Scenario 3: Incomplete or in-progress factoring
-  const totalBreakdown = computeExpressionBreakdown(tiles);
-  const topDim = topTrackTiles.length > 0 ? formatDimensionString(topX, topUnit) : { label: '?', latex: '(?)' };
-  const leftDim = leftTrackTiles.length > 0 ? formatDimensionString(leftX, leftUnit) : { label: '?', latex: '(?)' };
+  const fullEquationLatex = hasTopTrack && hasLeftTrack
+    ? `${leftDim.latex}${topDim.latex} = ${productBreakdown.simplifiedLatex}`
+    : solidRect.fullEquationLatex;
 
   return {
-    topFactor: computeExpressionBreakdown(topTrackTiles),
-    leftFactor: computeExpressionBreakdown(leftTrackTiles),
-    productArea: totalBreakdown,
+    topFactor: topBreakdown,
+    leftFactor: leftBreakdown,
+    productArea: productBreakdown,
     topLatex: topDim.latex,
     leftLatex: leftDim.latex,
-    productLatex: totalBreakdown.simplifiedLatex,
-    fullEquationLatex: `${topDim.latex} ${leftDim.latex} = ${totalBreakdown.simplifiedLatex}`,
-    isValidFactorization: false,
+    productLatex: productBreakdown.simplifiedLatex,
+    fullEquationLatex,
+    isValidFactorization: isFullyValid,
     topCount: topTrackTiles.length,
     leftCount: leftTrackTiles.length,
     productCount: productAreaTiles.length > 0 ? productAreaTiles.length : tiles.length,

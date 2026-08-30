@@ -1,8 +1,8 @@
 import { TileKind, Challenge } from '../types';
 
-export const BASE_UNIT = 28; // base 1 unit size u = 28px
-export const X_UNIT = 140;   // base x length = 140px (exact 5 * 28px for x, 140 x 140px for x²)
-export const Y_UNIT = 140;   // base y length = 140px
+export const BASE_UNIT = 36; // base 1 unit size u = 36px (comfortable touch & drag target)
+export const X_UNIT = 180;   // base x length = 180px (exact 5 * 36px for x, 180 x 180px for x²)
+export const Y_UNIT = 180;   // base y length = 180px
 
 export interface TileDimensions {
   width: number;

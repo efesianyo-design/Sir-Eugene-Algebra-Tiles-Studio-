@@ -508,13 +508,14 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               const canvasMidX = (containerRef.current?.clientWidth || 800) / 2;
               zone = (init.x + effectiveDx) < canvasMidX ? 'left' : 'right';
             } else if (mode === 'factor') {
-              const finalX = init.x + effectiveDx;
-              const finalY = init.y + effectiveDy;
-              if (finalY < 160 && finalX >= 160) {
+              const dim = getTileDimensions(t.kind, t.rotation, gridConfig.unitSize, gridConfig.xSize, gridConfig.ySize);
+              const finalCenterX = (init.x + effectiveDx) + dim.width / 2;
+              const finalCenterY = (init.y + effectiveDy) + dim.height / 2;
+              if (finalCenterY < 155 && finalCenterX >= 155) {
                 zone = 'top_factor';
-              } else if (finalX < 180 && finalY >= 140) {
+              } else if (finalCenterX < 155 && finalCenterY >= 155) {
                 zone = 'left_factor';
-              } else if (finalX >= 180 && finalY >= 160) {
+              } else if (finalCenterX >= 155 && finalCenterY >= 155) {
                 zone = 'product_area';
               } else {
                 zone = 'main';
@@ -906,7 +907,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               style={{
                 left: 0,
                 top: 0,
-                width: '180px',
+                width: '160px',
                 height: '160px',
               }}
             >
@@ -920,7 +921,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             <div
               className="absolute border-b-2 border-dashed border-cyan-500/40 bg-cyan-950/10 px-4 py-2.5 flex flex-col justify-start select-none"
               style={{
-                left: '180px',
+                left: '160px',
                 top: 0,
                 width: '2400px',
                 height: '160px',
@@ -942,7 +943,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               style={{
                 left: 0,
                 top: '160px',
-                width: '180px',
+                width: '160px',
                 height: '2000px',
               }}
             >
@@ -958,7 +959,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             <div
               className="absolute w-0 border-r-2 border-dashed border-cyan-500/40"
               style={{
-                left: '180px',
+                left: '160px',
                 top: '160px',
                 height: '2000px',
               }}
@@ -968,7 +969,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             <div
               className="absolute h-0 border-b-2 border-dashed border-cyan-500/40"
               style={{
-                left: '180px',
+                left: '160px',
                 top: '160px',
                 width: '2400px',
               }}
@@ -994,54 +995,64 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               }}
             />
 
-            {/* 2. TOP GLOWING DIMENSION BRACKET (Width Factor) */}
-            <div
-              className="absolute flex flex-col items-center pointer-events-auto"
-              style={{
-                left: `${solidRectResult.bounds.minX}px`,
-                top: `${solidRectResult.bounds.minY - 46}px`,
-                width: `${solidRectResult.bounds.width}px`,
-              }}
-            >
-              {/* Width Factor Badge */}
-              <div className="bg-emerald-950/95 border-2 border-emerald-400 text-emerald-300 font-mono font-black text-xs sm:text-sm px-3 py-0.5 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)] flex items-center gap-1.5 whitespace-nowrap">
-                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Width:</span>
-                <span>{solidRectResult.topDimension.label || 'x'}</span>
-              </div>
-              {/* Horizontal Bracket Bar & End Ticks */}
-              <div className="w-full h-2.5 flex items-center relative mt-1">
-                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
-                <div className="w-full h-0.5 bg-emerald-400/90 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
-              </div>
-            </div>
-
-            {/* 3. LEFT GLOWING DIMENSION BRACKET (Height Factor) */}
-            <div
-              className="absolute flex flex-row items-center pointer-events-auto"
-              style={{
-                left: `${solidRectResult.bounds.minX - 58}px`,
-                top: `${solidRectResult.bounds.minY}px`,
-                height: `${solidRectResult.bounds.height}px`,
-              }}
-            >
-              {/* Height Factor Badge */}
-              <div className="bg-blue-950/95 border-2 border-blue-400 text-blue-300 font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1 whitespace-nowrap -rotate-90 origin-center">
-                <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Height:</span>
-                <span>{solidRectResult.leftDimension.label || 'x'}</span>
-              </div>
-              {/* Vertical Bracket Bar & End Ticks */}
-              <div className="h-full w-2.5 flex flex-col justify-center relative ml-1">
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
-                <div className="h-full w-0.5 bg-blue-400/90 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
-              </div>
-            </div>
-
-            {/* 4. Factored Equation Victory Pill */}
-            {((mode === 'factor' && factoringModel.isValidFactorization) || (mode !== 'factor' && solidRectResult.isValidTrinomialFactoring)) && (
+            {/* 2. TOP GLOWING DIMENSION BRACKET (Width Factor) - Only shown before moving to factor tracks */}
+            {(mode !== 'factor' || (factoringModel.topCount === 0 && factoringModel.leftCount === 0)) && (
               <div
-                className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-slate-900/95 border-2 border-emerald-400 text-emerald-200 px-4 py-1.5 rounded-full shadow-[0_0_30px_rgba(16,185,129,0.6)] flex items-center gap-2 text-xs sm:text-sm font-black whitespace-nowrap z-30 pointer-events-auto animate-bounce"
+                className="absolute flex flex-col items-center pointer-events-auto"
+                style={{
+                  left: `${solidRectResult.bounds.minX}px`,
+                  top: `${solidRectResult.bounds.minY - 46}px`,
+                  width: `${solidRectResult.bounds.width}px`,
+                }}
+              >
+                {/* Width Factor Badge */}
+                <div className="bg-emerald-950/95 border-2 border-emerald-400 text-emerald-300 font-mono font-black text-xs sm:text-sm px-3 py-0.5 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)] flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Width:</span>
+                  <span>{solidRectResult.topDimension.label || 'x'}</span>
+                </div>
+                {/* Horizontal Bracket Bar & End Ticks */}
+                <div className="w-full h-2.5 flex items-center relative mt-1">
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
+                  <div className="w-full h-0.5 bg-emerald-400/90 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                  <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-emerald-400 rounded-full" />
+                </div>
+              </div>
+            )}
+
+            {/* 3. LEFT GLOWING DIMENSION BRACKET (Height Factor) - Only shown before moving to factor tracks */}
+            {(mode !== 'factor' || (factoringModel.topCount === 0 && factoringModel.leftCount === 0)) && (
+              <div
+                className="absolute flex flex-row items-center pointer-events-auto"
+                style={{
+                  left: `${solidRectResult.bounds.minX - 58}px`,
+                  top: `${solidRectResult.bounds.minY}px`,
+                  height: `${solidRectResult.bounds.height}px`,
+                }}
+              >
+                {/* Height Factor Badge */}
+                <div className="bg-blue-950/95 border-2 border-blue-400 text-blue-300 font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1 whitespace-nowrap -rotate-90 origin-center">
+                  <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Height:</span>
+                  <span>{solidRectResult.leftDimension.label || 'x'}</span>
+                </div>
+                {/* Vertical Bracket Bar & End Ticks */}
+                <div className="h-full w-2.5 flex flex-col justify-center relative ml-1">
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
+                  <div className="h-full w-0.5 bg-blue-400/90 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400 rounded-full" />
+                </div>
+              </div>
+            )}
+
+            {/* 4. Factored Equation Information & Victory Pill */}
+            {((mode !== 'factor' && solidRectResult.isValidTrinomialFactoring) ||
+              (mode === 'factor' && factoringModel.topCount === 0 && factoringModel.leftCount === 0 && solidRectResult.isValidTrinomialFactoring) ||
+              (mode === 'factor' && factoringModel.isValidFactorization)) && (
+              <div
+                className={`absolute -bottom-12 left-1/2 -translate-x-1/2 bg-slate-900/95 border-2 rounded-full px-4 py-1.5 flex items-center gap-2 text-xs sm:text-sm font-black whitespace-nowrap z-30 pointer-events-auto transition-all ${
+                  mode === 'factor' && factoringModel.isValidFactorization
+                    ? 'border-emerald-400 text-emerald-200 shadow-[0_0_30px_rgba(16,185,129,0.7)] animate-bounce'
+                    : 'border-emerald-500/80 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+                }`}
                 style={{
                   left: `${solidRectResult.bounds.minX + solidRectResult.bounds.width / 2}px`,
                   top: `${solidRectResult.bounds.maxY + 14}px`,
@@ -1049,7 +1060,7 @@ export const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 <span>
-                  Factored: {mode === 'factor' ? factoringModel.fullEquationLatex : solidRectResult.fullEquationLatex}
+                  Factored: {mode === 'factor' && factoringModel.isValidFactorization ? factoringModel.fullEquationLatex : solidRectResult.fullEquationLatex}
                 </span>
               </div>
             )}

@@ -79,9 +79,9 @@ const getDefaultWorkspace = (targetMode: WorkspaceMode): ModeWorkspaceData => {
   // Freeform explore
   const simpTiles: TileData[] = [
     { id: 't-init-1', kind: 'x2', sign: 1, x: 100, y: 100, rotation: 0, zone: 'main' },
-    { id: 't-init-2', kind: 'x', sign: 1, x: 260, y: 100, rotation: 90, zone: 'main' },
-    { id: 't-init-3', kind: 'x', sign: 1, x: 100, y: 260, rotation: 0, zone: 'main' },
-    { id: 't-init-4', kind: 'unit', sign: 1, x: 260, y: 260, rotation: 0, zone: 'main' },
+    { id: 't-init-2', kind: 'x', sign: 1, x: 300, y: 100, rotation: 90, zone: 'main' },
+    { id: 't-init-3', kind: 'x', sign: 1, x: 100, y: 300, rotation: 0, zone: 'main' },
+    { id: 't-init-4', kind: 'unit', sign: 1, x: 300, y: 300, rotation: 0, zone: 'main' },
   ];
   return {
     tiles: simpTiles,
@@ -94,7 +94,7 @@ const getDefaultWorkspace = (targetMode: WorkspaceMode): ModeWorkspaceData => {
 };
 
 export default function App() {
-  const STORAGE_KEY = 'algebra_tiles_workspace_v5';
+  const STORAGE_KEY = 'algebra_tiles_workspace_v6';
 
   // Workspace Mode
   const [mode, setMode] = useState<WorkspaceMode>(() => {

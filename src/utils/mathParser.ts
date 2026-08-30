@@ -305,12 +305,12 @@ export const generateTilesForFactoring = (
         rotation: 0,
         zone: 'product_area',
       });
-      curX += 160;
+      curX += 200;
     }
   });
 
   // 2. Place x-tiles in a bank
-  curX = startX + 170;
+  curX = startX + 210;
   curY = startY;
   const xTerms = parsed.terms.filter((t) => t.kind === 'x');
   xTerms.forEach((t) => {
@@ -319,8 +319,8 @@ export const generateTilesForFactoring = (
         id: `fact-x-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         kind: 'x',
         sign: t.sign,
-        x: curX + (i % 3) * 160,
-        y: curY + Math.floor(i / 3) * 36,
+        x: curX + (i % 3) * 200,
+        y: curY + Math.floor(i / 3) * 44,
         rotation: 0,
         zone: 'product_area',
       });
@@ -330,8 +330,8 @@ export const generateTilesForFactoring = (
   // 3. Place unit tiles in a neat cluster below
   const totalX = xTerms.reduce((sum, t) => sum + t.count, 0);
   const xRows = Math.ceil(totalX / 3);
-  curX = startX + 170;
-  curY = startY + Math.max(1, xRows) * 36 + 16;
+  curX = startX + 210;
+  curY = startY + Math.max(1, xRows) * 44 + 20;
   const unitTerms = parsed.terms.filter((t) => t.kind === 'unit');
   unitTerms.forEach((t) => {
     for (let i = 0; i < t.count; i++) {
@@ -339,8 +339,8 @@ export const generateTilesForFactoring = (
         id: `fact-u-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         kind: 'unit',
         sign: t.sign,
-        x: curX + (i % 6) * 32,
-        y: curY + Math.floor(i / 6) * 32,
+        x: curX + (i % 6) * 44,
+        y: curY + Math.floor(i / 6) * 44,
         rotation: 0,
         zone: 'product_area',
       });
@@ -368,11 +368,11 @@ export const autoArrangeFactoredRectangle = (
   tiles: TileData[],
   factorTopUnit: number,
   factorLeftUnit: number,
-  xOrigin: number = 180,
-  yOrigin: number = 160
+  xOrigin: number = 200,
+  yOrigin: number = 180
 ): TileData[] => {
-  const xDim = getTileDimensions('x2', 0); // 140x140
-  const unitDim = getTileDimensions('unit', 0); // 28x28
+  const xDim = getTileDimensions('x2', 0); // 180x180
+  const unitDim = getTileDimensions('unit', 0); // 36x36
 
   const p = Math.max(0, factorTopUnit);
   const q = Math.max(0, factorLeftUnit);
@@ -383,13 +383,14 @@ export const autoArrangeFactoredRectangle = (
 
   const arranged: TileData[] = [];
 
-  // 1. Top Factor Track: flush at yOrigin - 32
+  // 1. Top Factor Track: flush at yOrigin - unitDim.height - 4
+  const topTrackY = yOrigin - unitDim.height - 6;
   arranged.push({
     id: `top-track-x-${Date.now()}`,
     kind: 'x',
     sign: 1,
     x: xOrigin,
-    y: yOrigin - 32,
+    y: topTrackY,
     rotation: 0,
     zone: 'top_factor',
   });
@@ -399,18 +400,19 @@ export const autoArrangeFactoredRectangle = (
       kind: 'unit',
       sign: 1,
       x: xOrigin + xDim.width + i * unitDim.width,
-      y: yOrigin - 32,
+      y: topTrackY,
       rotation: 0,
       zone: 'top_factor',
     });
   }
 
-  // 2. Left Factor Track: flush at xOrigin - 32
+  // 2. Left Factor Track: flush at xOrigin - unitDim.width - 6
+  const leftTrackX = xOrigin - unitDim.width - 6;
   arranged.push({
     id: `left-track-x-${Date.now()}`,
     kind: 'x',
     sign: 1,
-    x: xOrigin - 32,
+    x: leftTrackX,
     y: yOrigin,
     rotation: 90,
     zone: 'left_factor',
@@ -420,7 +422,7 @@ export const autoArrangeFactoredRectangle = (
       id: `left-track-u-${j}-${Date.now()}`,
       kind: 'unit',
       sign: 1,
-      x: xOrigin - 32,
+      x: leftTrackX,
       y: yOrigin + xDim.height + j * unitDim.height,
       rotation: 0,
       zone: 'left_factor',
